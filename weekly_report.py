@@ -4,10 +4,8 @@ Heti jelentés generáló — hétfő reggel fut
 """
 import json
 import os
-import sys
 from datetime import datetime, timedelta, timezone
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import db
 from notify import format_item_card, send_telegram
 

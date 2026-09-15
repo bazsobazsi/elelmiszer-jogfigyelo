@@ -2,10 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Teljes projekt másolása
 COPY . /app/
 
-RUN pip install --no-cache-dir -r requirements.txt && \
+RUN pip install --no-cache-dir flask pymupdf feedparser beautifulsoup4 requests && \
     mkdir -p /data/db /data/pdfs && \
     ELELMISZER_DB_DIR=/data/db python3 db.py
 
