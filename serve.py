@@ -12,6 +12,13 @@ from flask import Flask, jsonify, render_template_string, request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db
 
+# DB auto-init ha nem létezik
+if not os.path.exists(db.DB_PATH):
+    print("⚠️  DB nem található — inicializálás...")
+    import subprocess
+    subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "db.py")])
+    print("✅ DB inicializálva")
+
 app = Flask(__name__)
 
 # ── HTML TEMPLATE (dark theme, mobilfirst) ──
@@ -227,6 +234,10 @@ def api_stats():
     return jsonify(db.get_stats())
 
 
+@app.route("/api/health")
+def api_health():
+    return jsonify({"status": "ok"})
+
 @app.route("/api/daily")
 def api_daily():
     import notify
@@ -238,4 +249,8 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8768))
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     print(f"🍽️  Élelmiszer-jogfigyelő dashboard: http://0.0.0.0:{port}")
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    try:
+        app.run(host="0.0.0.0", port=port, debug=debug)
+    except Exception as e:
+        print(f"❌ Fatal error: {e}")
+        sys.exit(1)
