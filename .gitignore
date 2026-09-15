@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+venv/
+.venv/
+
+# Adatbázis (helyi)
+*.db
+*.db-wal
+*.db-shm
+~/.elelmiszer_jogfigyelo/
+
+# Letöltött PDF-ek / cache
+pdfs/
+nebih_pdfs/
+
+# OS
+.DS_Store
+
+# Env
+.env
+*.env
+
+# Logok
+*.log
