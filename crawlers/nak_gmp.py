@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 NAK/Magyar GMP-GHP útmutató figyelő
-Jó Higiéniai Gyakorlat (GHP) útmutatók az élelmiszerlanc.kormany.hu-ról.
+Jó Higiéniai Gyakorlat (GHP) útmutatók az elelmiszerlanc.kormany.hu-ról.
 """
 import hashlib
 import json
@@ -13,6 +13,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import db
 
 NAK_GHP_URL = "https://elelmiszerlanc.kormany.hu/jo-higieniai-gyakorlat-utmutatok"
+
+SECTOR_MAP = {
+    "hús": "húskészítmény", "baromfi": "húskészítmény", "sertés": "húskészítmény",
+    "marha": "húskészítmény", "vendéglátás": "vendéglátás", "étkeztetés": "vendéglátás",
+    "tej": "tejtermék", "sütő": "pékáru", "cukor": "cukoripar",
+    "konzerv": "konzervipar", "gyorsfagyasztott": "gyorsfagyasztott",
+    "hal": "halászati termék", "kiskereskedelmi": "kiskereskedelem",
+    "kistermelői": "kistermelő", "alkoholmentes": "italgyártás",
+    "jégkrém": "jégkrém", "száraztészta": "száraztészta", "szeszesital": "szeszesital",
+    "tojás": "tojástermék", "hűtött": "hűtött élelmiszer", "cukoripar": "cukoripar",
+    "malomipar": "malomipar", "söripar": "söripar", "édesipar": "édesipar",
+    "növényolaj": "növényolaj", "szikvíz": "üdítőital",
+}
 
 
 def run():
@@ -27,42 +40,34 @@ def run():
 """)
         return
 
-    # PDF útmutatók kinyerése
-    # Minta: <a href="download/.../GHP_neve.pdf">Útmutató címe</a>
+    # Markdown formátum: [Title](url.pdf)
+    # web_extract ezt adja vissza
     pdf_pattern = re.findall(
-        r'<a\s+href="(download/[^"]+\.pdf)"[^>]*>(.*?)</a>', html, re.IGNORECASE
+        r'\[([^\]]+)\]\(([^)]+\.pdf)\)', html
     )
-
     guides = []
     seen = set()
-    for rel_url, title in pdf_pattern:
-        title_clean = re.sub(r'<[^>]+>', '', title).strip()
-        if not title_clean or "útmutató" not in title_clean.lower():
-            continue
-        full_url = f"https://elelmiszerlanc.kormany.hu/{rel_url}" if rel_url.startswith("download") else rel_url
+    for title_clean, full_url in pdf_pattern:
+        title_clean = title_clean.replace("**", "").strip()
+        # Szűrés: csak útmutatók
+        if not title_clean or "útm" not in title_clean.lower()[:5]:
+            if not any(k in title_clean.lower() for k in ["higiénia", "ghp", "gmp", "gyakorlat"]):
+                continue
+
+        if not full_url.startswith("http"):
+            full_url = f"https://elelmiszerlanc.kormany.hu/{full_url.lstrip('/')}"
         dedup = title_clean + full_url
         if dedup in seen:
             continue
         seen.add(dedup)
 
-        # Élelmiszeripari szektor detektálása a címből
+        # Szektor detektálás
         sectors = []
-        sector_map = {
-            "hús": "húskészítmény",
-            "baromfi": "húskészítmény",
-            "vendéglátás": "vendéglátás",
-            "étkeztetés": "vendéglátás",
-            "tej": "tejtermék",
-            "sütő": "pékáru",
-            "cukor": "cukoripar",
-            "konzerv": "konzervipar",
-            "gyorsfagyasztott": "gyorsfagyasztott",
-            "hal": "halászati termék",
-            "kiskereskedelmi": "kiskereskedelem",
-        }
-        for keyword, sector in sector_map.items():
+        for keyword, sector in SECTOR_MAP.items():
             if keyword in title_clean.lower():
                 sectors.append(sector)
+        if not sectors:
+            sectors.append("általános élelmiszeripar")
 
         guides.append({
             "title": title_clean,
@@ -73,6 +78,7 @@ def run():
     new_count = 0
     for guide in guides:
         source_id = hashlib.md5(guide["url"].encode()).hexdigest()[:16]
+
         title_full = f"[GHP] {guide['title']}"
         if guide["sectors"]:
             title_full += f" ({', '.join(guide['sectors'])})"
