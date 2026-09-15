@@ -236,5 +236,6 @@ def api_daily():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8768))
-    print(f"🍽️  Élelmiszer-jogfigyelő dashboard: http://localhost:{port}")
-    app.run(host="0.0.0.0", port=port, debug=True)
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    print(f"🍽️  Élelmiszer-jogfigyelő dashboard: http://0.0.0.0:{port}")
+    app.run(host="0.0.0.0", port=port, debug=debug)
