@@ -23,7 +23,7 @@ except ImportError:
         fitz = None
 
 USER_AGENT = "ElelmiszerJogfigyelo/1.0 (Hermes Agent)"
-PDF_DIR = os.path.expanduser("~/.elelmiszer_jogfigyelo/nebih_pdfs/")
+PDF_DIR = os.environ.get("ELELMISZER_PDF_DIR", os.path.expanduser("~/.elelmiszer_jogfigyelo/nebih_pdfs/"))
 
 NEBIH_LAW_LIST_URL = "https://portal.nebih.gov.hu/-/elelmiszer-jogszabalyok-jegyzeke"
 

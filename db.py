@@ -8,7 +8,7 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-DB_DIR = os.path.expanduser("~/.elelmiszer_jogfigyelo")
+DB_DIR = os.environ.get("ELELMISZER_DB_DIR", os.path.expanduser("~/.elelmiszer_jogfigyelo"))
 DB_PATH = os.path.join(DB_DIR, "state.db")
 
 SCHEMA = """

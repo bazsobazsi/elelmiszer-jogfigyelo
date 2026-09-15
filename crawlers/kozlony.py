@@ -20,7 +20,7 @@ except ImportError:
 
 RSS_URL = "https://magyarkozlony.hu/feed"
 USER_AGENT = "ElelmiszerJogfigyelo/1.0 (Hermes Agent)"
-PDF_DIR = os.path.expanduser("~/.elelmiszer_jogfigyelo/pdfs/")
+PDF_DIR = os.environ.get("ELELMISZER_PDF_DIR", os.path.expanduser("~/.elelmiszer_jogfigyelo/pdfs/"))
 MAX_NEW = 2  # egyszerre max 2 számot dolgozunk fel (teljesítmény)
 
 # Élelmiszeripari domain kulcsszavak
