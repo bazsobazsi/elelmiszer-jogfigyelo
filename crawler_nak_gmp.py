@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import db
 
 NAK_GHP_URL = "https://elelmiszerlanc.kormany.hu/jo-higieniai-gyakorlat-utmutatok"
