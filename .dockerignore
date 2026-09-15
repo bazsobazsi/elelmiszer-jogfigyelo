@@ -1,0 +1,4 @@
+.git/
+.gitignore
+*.md
+install.sh
