@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
-Osztályozó modul — eldönti, hogy egy item releváns-e élelmiszeripari
-minőségbiztosítási szempontból, és kategorizálja.
+Compliance Agent — AI osztályozó és hatásvizsgáló
+Nem csak relevanciát dönt el, hanem compliance hatásvizsgálatot végez:
+- Milyen HACCP/szabvány/kötelezettség módosul?
+- Mit kell tennie az ügyfélnek? (konkrét lépések)
+- Milyen határidők/döntések vannak?
+- Melyik GHP útmutató érintett?
 """
+import hashlib
 import json
 import os
 import sys
@@ -10,110 +15,93 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import db
 
+COMPLIANCE_DOMAIN_TOPICS = {
+    "Jelölés, címkézés, tápértékjelölés": {
+        "keywords": ["jelölés", "címkézés", "tápérték", "allergén", "FIC", "1169/2011", "QUID"],
+        "standards": ["HACCP", "BRCGS"],
+        "action": "Ellenőrizni a termékcímkéket, frissíteni a jelölési adatbázist.",
+    },
+    "HACCP, élelmiszerhigiénia, önellenőrzés": {
+        "keywords": ["HACCP", "higiénia", "önellenőrzés", "CCP", "mikrobiológia", "852/2004"],
+        "standards": ["HACCP", "ISO 22000", "BRCGS", "FSSC 22000"],
+        "action": "Felülvizsgálni a HACCP dokumentációt, frissíteni a CCP-monitoring tervet.",
+    },
+    "Adalékanyagok, aromák, szennyezőanyagok": {
+        "keywords": ["adalék", "aroma", "szennyező", "mikotoxin", "aflatoxin", "nehézfém", "migráció"],
+        "standards": ["HACCP", "BRCGS", "IFS Food"],
+        "action": "Ellenőrizni a beszállítói adalékanyag-deklarációkat és a szennyezőanyag-vizsgálatokat.",
+    },
+    "Csomagolás, élelmiszerrel érintkező anyagok (FCM)": {
+        "keywords": ["csomagolóanyag", "FCM", "BPA", "biszfenol", "élelmiszerekkel érintkezés"],
+        "standards": ["BRCGS", "IFS Food", "FSSC 22000"],
+        "action": "Beszállítói FCM-megfelelőség ellenőrzése, nyilatkozatok bekérése.",
+    },
+    "Speciális: novel food, GMO, étrend-kiegészítő": {
+        "keywords": ["novel food", "új élelmiszer", "GMO", "étrend-kiegészítő", "2283/2015"],
+        "standards": ["HACCP", "ISO 22000"],
+        "action": "Termékengedélyek és EFSA-státusz ellenőrzése.",
+    },
+    "Export harmadik országba": {
+        "keywords": ["harmadik ország", "export", "import", "USA", "FDA", "UK", "Svájc", "szerbia"],
+        "standards": ["HACCP", "BRCGS", "FSSC 22000", "ISO 22000"],
+        "action": "Exportpiaci jogszabálykövetés ellenőrzése az adott ország hatósági előírásai szerint.",
+    },
+}
 
-def classify_item(item, profiles=None):
+
+def get_compliance_impact_prompt(item, profile):
     """
-    AI osztályozás: relevancia + kategória + érintett termékcsoportok + szabványok
-    Ezt a cron job fogja meghívni LLM-mel; itt a strukturált prompt sablon.
+    Compliance hatásvizsgálat prompt.
+    Nem csak osztályoz, hanem konkrét következményeket azonosít.
     """
-    if profiles is None:
-        profiles = db.get_active_profiles()
+    return f"""Te egy élelmiszeripari compliance ügynök vagy. A feladatod, hogy egy
+változás/riasztás/új szabályozás hatását elemezd az alábbi ügyfél profiljára.
 
-    # A visszatérési érték egy prompt sablon, amit a cron job LLM-hívásban használ
-    prompt = f"""Te egy élelmiszeripari minőségbiztosítási szakértő vagy.
-Elemezd a következő bejegyzést:
+Ügyfél: {profile.get('name', 'Ismeretlen')}
+Termékcsoportok: {json.loads(profile.get('product_groups', '[]')) if isinstance(profile.get('product_groups'), str) else profile.get('product_groups', [])}
+Tanúsítványok: {json.loads(profile.get('standards', '[]')) if isinstance(profile.get('standards'), str) else profile.get('standards', [])}
+Exportcélok: {json.loads(profile.get('export_targets', '[]')) if isinstance(profile.get('export_targets'), str) else profile.get('export_targets', [])}
 
+Bejövő változás:
 Forrás: {item['source']}
 Cím: {item['title']}
-Megjelenés: {item.get('published_at', 'ismeretlen')}
-Tartalom: {item.get('raw_json', '')[:2000]}
+Tartalom: {item.get('raw_json', '')[:1500]}
 
-Profilok:
-{json.dumps([{
-    'name': p['name'],
-    'product_groups': json.loads(p['product_groups']) if isinstance(p['product_groups'], str) else p['product_groups'],
-    'standards': json.loads(p['standards']) if isinstance(p['standards'], str) else p['standards'],
-    'keywords': p.get('keywords', '')
-} for p in profiles], ensure_ascii=False, indent=2)}
+Elemezd:
+1. Compliance relevancia (0/1)
+2. Kategória: jovahagyas / modositas / riasztas / iranymutatas / GMP_utmutato / export
+3. Érintett termékcsoportok (pontosan melyikek a profilból)
+4. Érintett szabványok és HACCP eljárások
+5. Konkrét teendő: mit kell módosítani a HACCP/dokumentáció/ellenőrzés/termék területen?
+6. Határidő (ha van)
+7. Melyik GHP útmutató érintett?
 
-Döntsd el:
-1. Releváns-e élelmiszeripari minőségbiztosítási szempontból? (0/1)
-2. Kategória: "jogszabaly" / "riasztas" / "szabvany" / "egyeb"
-3. Érintett termékcsoportok: [lista a profilokból, ha releváns]
-4. Érintett szabványok: [BRCGS/IFS/FSSC 22000/ISO 22000/HACCP — ha köthető]
-
-Válasz CSAK JSON formátumban:
-{{"relevant": 0|1, "category": "...", "product_groups": [...], "standards": [...]}}
-"""
-    return prompt
-
-
-def classify_from_text(text, profiles):
-    """
-    Szöveges elemzés promptja (PDF-ekhez, hosszabb tartalomhoz).
-    """
-    profiles_json = json.dumps([{
-        'name': p['name'],
-        'product_groups': json.loads(p['product_groups']) if isinstance(p['product_groups'], str) else p['product_groups'],
-        'standards': json.loads(p['standards']) if isinstance(p['standards'], str) else p['standards'],
-    } for p in profiles], ensure_ascii=False, indent=2)
-
-    return f"""Élelmiszeripari minőségbiztosítási szakértő vagy.
-Elemezd a következő szöveget (PDF tartalom):
-
-{text[:3000]}
-
-Profilok: {profiles_json}
-
-Feladatok:
-1. Van-e élelmiszeripari minőségbiztosítási relevanciája? (0/1)
-2. Ha igen, kategória: jogszabaly / riasztas / szabvany / egyeb
-3. Érintett termékcsoportok: []
-4. Érintett szabványok: []
-5. Van-e határidő a bevezetésre? (pl. 2026. december 31.)
-
-Válasz JSON: {{"relevant": 0|1, "category": "...", "product_groups": [...], "standards": [...], "deadline": null}}
+Válasz JSON:
+{{"relevant": 0|1, "category": "...", "product_groups": [...], "standards": [...], "action_required": "...", "deadline": null vagy "...", "ghp_guide": null vagy "..."}}
 """
 
 
-def parse_classification(llm_response):
-    """
-    Feldolgozza az LLM válaszát JSON formátumban.
-    """
-    try:
-        # JSON kinyerése a szövegből (lehet markdown kódblokkban)
-        text = llm_response.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-        return json.loads(text)
-    except (json.JSONDecodeError, IndexError):
-        print(f"⚠️  JSON parse hiba: {llm_response[:200]}", file=sys.stderr)
-        return {"relevant": 0, "category": "egyeb", "product_groups": [], "standards": []}
-
-
-def process_unanalysed(profiles=None):
-    """Feldolgoz minden még nem elemzett item-et a DB-ben"""
-    if profiles is None:
-        profiles = db.get_active_profiles()
-
+def run():
+    """Osztályozza az összes elemzetlen itemet a compliance prompt segítségével"""
     items = db.get_unanalysed()
+    profiles = db.get_active_profiles()
+
     if not items:
-        print("   Nincs feldolgozatlan item")
+        print("✅ Nincs feldolgozatlan item")
         return
 
-    print(f"   {len(items)} feldolgozatlan item")
+    print(f"⏳ {len(items)} feldolgozatlan item")
+    print(f"👤 {len(profiles)} aktív profil")
+    print()
+    print("Az alábbi promptokat kell elküldeni az LLM-nek és az eredményt")
+    print("db.add_analysis()-el tárolni.")
+    print("=" * 50)
     for item in items:
-        prompt = classify_item(item, profiles)
-        # A prompt itt készen van, a cron job fogja LLM-hez küldeni
-        # Ezt a classify.py-t a cron job prompt használja
-        print(f"   ⏳ {item['source']}: {item['title'][:60]}")
-
-    return items
+        print(f"\n#{item['id']} [{item['source']}] {item['title'][:60]}")
+        profile = profiles[0] if profiles else {"name": "Alapértelmezett"}
+        prompt = get_compliance_impact_prompt(item, profile)
+        print(f"  Prompt hossza: {len(prompt)} karakter")
 
 
 if __name__ == "__main__":
-    items = process_unanalysed()
-    if items:
-        print(f"✅ {len(items)} item osztályozásra vár")
+    run()

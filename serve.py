@@ -48,6 +48,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .tag.red { background: #2e1a1a; color: #f77; }
 .tag.yellow { background: #2e2a1a; color: #ff7; }
 .tag.blue { background: #1a1a2e; color: #77f; }
+.tag.purple { background: #2e1a3e; color: #c77; }
+.tag.green { background: #1a2e1a; color: #7f7; }
 .card .summary { font-size: 0.85rem; color: #bbb; line-height: 1.4; }
 .card .actions { font-size: 0.82rem; color: #4fc3f7; margin-top: 6px; }
 .card .deadline { font-size: 0.8rem; color: #ff7; margin-top: 4px; }
@@ -83,11 +85,17 @@ a { color: #4fc3f7; }
     <option value="kozlony">Magyar Közlöny</option>
     <option value="nebih">NÉBIH</option>
     <option value="szabvany">Szabványok</option>
+    <option value="eu_guidance">EU Guidance</option>
+    <option value="nak_ghp">NAK GMP</option>
   </select>
   <select id="filter-category">
     <option value="">Minden kategória</option>
     <option value="jogszabaly">Jogszabály</option>
+    <option value="modositas">Módosítás</option>
     <option value="riasztas">Riasztás</option>
+    <option value="iranymutatas">Irányítás</option>
+    <option value="GMP_utmutato">GMP</option>
+    <option value="export">Export</option>
     <option value="szabvany">Szabvány</option>
     <option value="egyeb">Egyéb</option>
   </select>
@@ -141,10 +149,10 @@ function renderItems(items) {
     return;
   }
   container.innerHTML = items.map(item => {
-    const sourceEmoji = {eurlex:'🔴', rasff:'🟡', kozlony:'🔵', nebih:'📘', szabvany:'🟣'};
+    const sourceEmoji = {eurlex:'🔴', rasff:'🟡', kozlony:'🔵', nebih:'📘', szabvany:'🟣', eu_guidance:'📋', nak_ghp:'📕'};
     const emoji = sourceEmoji[item.source] || '📄';
-    const catLabel = {jogszabaly:'Jogszabály', riasztas:'Riasztás', szabvany:'Szabvány', egyeb:'Egyéb'};
-    const catTagClass = {jogszabaly:'red', riasztas:'yellow', szabvany:'blue', egyeb:''};
+    const catLabel = {jogszabaly:'Jogszabály', modositas:'Módosítás', jovahagyas:'Jóváhagyás', riasztas:'Riasztás', iranymutatas:'Irányítás', GMP_utmutato:'GMP Útmutató', export:'Export', egyeb:'Egyéb'};
+    const catTagClass = {jogszabaly:'red', modositas:'red', jovahagyas:'blue', riasztas:'yellow', iranymutatas:'blue', GMP_utmutato:'purple', export:'green', egyeb:''};
 
     let groups = '';
     try { const g = JSON.parse(item.product_groups || '[]'); if(g.length) groups = g.join(', '); } catch(e) {}

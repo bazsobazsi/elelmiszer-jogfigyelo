@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     product_groups TEXT NOT NULL DEFAULT '[]',
     standards TEXT NOT NULL DEFAULT '[]',
     keywords TEXT DEFAULT '',
+    export_targets TEXT DEFAULT '[]',
     notification_channel TEXT DEFAULT 'telegram',
     notification_target TEXT DEFAULT '',
     active INTEGER DEFAULT 1
@@ -78,12 +79,13 @@ def init_db():
     profiles = conn.execute("SELECT COUNT(*) as c FROM profiles").fetchone()
     if profiles["c"] == 0:
         conn.execute(
-            "INSERT INTO profiles (name, product_groups, standards, keywords, notification_channel) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO profiles (name, product_groups, standards, keywords, export_targets, notification_channel) VALUES (?, ?, ?, ?, ?, ?)",
             (
                 "Első ügyfél",
                 json.dumps(["húskészítmény", "tejtermék", "pékáru"]),
                 json.dumps(["BRCGS", "HACCP", "ISO 22000"]),
                 "allergén, mikrobiológiai, Salmonella, Listeria",
+                json.dumps(["EU", "UK", "Svájc"]),
                 "telegram",
             ),
         )
