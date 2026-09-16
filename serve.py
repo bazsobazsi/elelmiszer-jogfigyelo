@@ -52,6 +52,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .card .title { font-size: 1rem; font-weight: 600; color: #fff; margin: 4px 0; }
 .card .meta { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
 .tag { background: #1a1a2e; border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; color: #aaa; }
+.nav { display:flex; gap:6px; }
+.nav-btn { background:#1a1a2e; border:1px solid #2a2a3e; color:#888; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.82rem; }
+.nav-btn.active { background:#4fc3f7; color:#0a0a0f; border-color:#4fc3f7; }
+.form-group { margin-bottom:10px; }
+.form-group label { display:block; font-size:0.82rem; color:#aaa; margin-bottom:3px; }
+.form-input { background:#1a1a2e; border:1px solid #2a2a3e; color:#e0e0e0; padding:8px; border-radius:6px; font-size:0.85rem; width:100%; max-width:400px; }
+.btn-primary { background:#4fc3f7; color:#0a0a0f; border:none; padding:8px 16px; border-radius:6px; font-weight:600; cursor:pointer; }
+.btn-secondary { background:#2a2a3e; color:#e0e0e0; border:none; padding:8px 16px; border-radius:6px; font-weight:600; cursor:pointer; }
+.form-status { font-size:0.82rem; color:#4fc3f7; }
 .tag.red { background: #2e1a1a; color: #f77; }
 .tag.yellow { background: #2e2a1a; color: #ff7; }
 .tag.blue { background: #1a1a2e; color: #77f; }
@@ -72,48 +81,52 @@ a { color: #4fc3f7; }
 </head>
 <body>
 <div class="header">
-  <h1>🍽️ Élelmiszer-jogfigyelő</h1>
-  <div class="sub">AI-alapú jogszabály- és szabványfigyelés</div>
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <div>
+      <h1>🍽️ Élelmiszer-jogfigyelő</h1>
+      <div class="sub">AI-alapú jogszabály- és szabványfigyelés</div>
+    </div>
+    <div class="nav">
+      <button class="nav-btn active" onclick="showTab('dashboard')" id="tab-dash">📊 Dashboard</button>
+      <button class="nav-btn" onclick="showTab('settings')" id="tab-set">⚙️ Beállítások</button>
+    </div>
+  </div>
 </div>
 
-<div id="error" style="display:none;" class="error-msg"></div>
-
-<div class="stats" id="stats">
-  <div class="stat-box"><div class="num" id="stat-total">-</div><div class="label">Ma összesen</div></div>
-  <div class="stat-box"><div class="num" id="stat-relevant">-</div><div class="label">Releváns</div></div>
-  <div class="stat-box"><div class="num" id="stat-sources">-</div><div class="label">Források</div></div>
+<div id="page-dashboard">
+  <div id="error" style="display:none;" class="error-msg"></div>
+  <div class="stats" id="stats">...</div>
+  <div class="filters">...</div>
+  <div id="items"></div>
 </div>
 
-<div class="filters">
-  <select id="filter-source">
-    <option value="">Minden forrás</option>
-    <option value="eurlex">EUR-Lex</option>
-    <option value="rasff">RASFF</option>
-    <option value="kozlony">Magyar Közlöny</option>
-    <option value="nebih">NÉBIH</option>
-    <option value="szabvany">Szabványok</option>
-    <option value="eu_guidance">EU Guidance</option>
-    <option value="nak_ghp">NAK GMP</option>
-  </select>
-  <select id="filter-category">
-    <option value="">Minden kategória</option>
-    <option value="jogszabaly">Jogszabály</option>
-    <option value="modositas">Módosítás</option>
-    <option value="riasztas">Riasztás</option>
-    <option value="iranymutatas">Irányítás</option>
-    <option value="GMP_utmutato">GMP</option>
-    <option value="export">Export</option>
-    <option value="szabvany">Szabvány</option>
-    <option value="egyeb">Egyéb</option>
-  </select>
-  <select id="filter-relevant">
-    <option value="">Minden</option>
-    <option value="1">Csak releváns</option>
-  </select>
-  <button onclick="loadItems()">🔍 Szűrés</button>
+<div id="page-settings" style="display:none;">
+  <h2 style="margin-bottom:12px;">📧 Email értesítés beállításai</h2>
+  <div class="card">
+    <div class="form-group"><label>SMTP szerver</label><input id="smtp_host" class="form-input" placeholder="smtp.gmail.com"></div>
+    <div class="form-group"><label>Port</label><input id="smtp_port" class="form-input" value="587" placeholder="587"></div>
+    <div class="form-group"><label>SMTP felhasználó</label><input id="smtp_user" class="form-input" placeholder="email@example.com"></div>
+    <div class="form-group"><label>SMTP jelszó</label><input id="smtp_pass" type="password" class="form-input" placeholder="****"></div>
+    <div class="form-group"><label>Feladó email</label><input id="from_email" class="form-input" placeholder="jogfigyelo@example.com"></div>
+    <div class="form-group"><label>Címzett (ügyfél)</label><input id="to_email" class="form-input" placeholder="ugyfel@ceg.hu"></div>
+    <div class="form-group"><label>CC (kontroll)</label><input id="cc_email" class="form-input" placeholder="kontroll@ceg.hu"></div>
+    <div class="form-group"><label>Termékszűrők (vesszővel)</label><input id="product_filters" class="form-input" placeholder="húskészítmény, tejtermék, pékáru"></div>
+    <div class="form-group">
+      <label><input id="email_enabled" type="checkbox"> Email értesítés bekapcsolva</label>
+    </div>
+    <div class="form-actions">
+      <button class="btn-primary" onclick="saveSettings()">💾 Mentés</button>
+      <button class="btn-secondary" onclick="testEmail()">📨 Teszt email</button>
+    </div>
+    <div id="settings-status" class="form-status" style="margin-top:8px;"></div>
+  </div>
+  
+  <h2 style="margin:16px 0 8px;">🔄 Crawler vezérlés</h2>
+  <div class="card" style="margin-bottom:12px;">
+    <button class="btn-primary" onclick="runCrawlers()">▶️ Crawler-ek futtatása</button>
+    <div id="crawl-status" class="form-status" style="margin-top:8px;"></div>
+  </div>
 </div>
-
-<div id="items"></div>
 
 <script>
 function showError(msg) {
@@ -192,6 +205,90 @@ function escapeHtml(s) {
 
 loadStats();
 loadItems();
+
+// ── Settings / Tab functions ──
+function showTab(name) {
+  document.getElementById('page-dashboard').style.display = name === 'dashboard' ? '' : 'none';
+  document.getElementById('page-settings').style.display = name === 'settings' ? '' : 'none';
+  document.getElementById('tab-dash').className = 'nav-btn' + (name === 'dashboard' ? ' active' : '');
+  document.getElementById('tab-set').className = 'nav-btn' + (name === 'settings' ? ' active' : '');
+  if (name === 'settings') loadSettings();
+}
+
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    const c = data.email_config || {};
+    document.getElementById('smtp_host').value = c.smtp_host || '';
+    document.getElementById('smtp_port').value = c.smtp_port || 587;
+    document.getElementById('smtp_user').value = c.smtp_user || '';
+    document.getElementById('from_email').value = c.from_email || '';
+    document.getElementById('to_email').value = c.to_email || '';
+    document.getElementById('cc_email').value = c.cc_email || '';
+    let filters = c.product_filters || '';
+    try { filters = JSON.parse(filters).join(', '); } catch(e) {}
+    document.getElementById('product_filters').value = filters;
+    document.getElementById('email_enabled').checked = c.enabled ? true : false;
+  } catch(e) {
+    setStatus('settings-status', '❌ Hiba a beállítások betöltésekor', true);
+  }
+}
+
+async function saveSettings() {
+  const filters = document.getElementById('product_filters').value.split(',').map(s => s.trim()).filter(Boolean);
+  const data = {
+    smtp_host: document.getElementById('smtp_host').value,
+    smtp_port: parseInt(document.getElementById('smtp_port').value) || 587,
+    smtp_user: document.getElementById('smtp_user').value,
+    smtp_pass: document.getElementById('smtp_pass').value,
+    from_email: document.getElementById('from_email').value,
+    to_email: document.getElementById('to_email').value,
+    cc_email: document.getElementById('cc_email').value,
+    product_filters: filters,
+    enabled: document.getElementById('email_enabled').checked,
+  };
+  try {
+    const res = await fetch('/api/settings', {method:'POST', body:JSON.stringify(data), headers:{'Content-Type':'application/json'}});
+    const r = await res.json();
+    setStatus('settings-status', r.status === 'ok' ? '✅ Mentve' : '❌ Hiba');
+  } catch(e) {
+    setStatus('settings-status', '❌ Hálózati hiba', true);
+  }
+}
+
+async function testEmail() {
+  setStatus('settings-status', '⏳ Email küldése...');
+  await saveSettings();
+  try {
+    const res = await fetch('/api/send-digest', {method:'POST'});
+    const r = await res.json();
+    if (r.sent > 0) setStatus('settings-status', `✅ ${r.sent} email elküldve`);
+    else setStatus('settings-status', '⚠️ ' + (r.message || r.error || 'Ismeretlen hiba'));
+  } catch(e) {
+    setStatus('settings-status', '❌ Hálózati hiba', true);
+  }
+}
+
+async function runCrawlers() {
+  setStatus('crawl-status', '⏳ Crawler-ek futtatása...');
+  try {
+    const res = await fetch('/api/crawl', {method:'POST'});
+    const r = await res.json();
+    let out = '';
+    for (const [name, result] of Object.entries(r)) {
+      out += `${name}: exit=${result.exit || 'error'}\n`;
+    }
+    setStatus('crawl-status', '✅ Crawler kész. Frissítsd a dashboard-ot az adatokért!');
+  } catch(e) {
+    setStatus('crawl-status', '❌ Hiba: ' + e.message, true);
+  }
+}
+
+function setStatus(id, msg, isError) {
+  const el = document.getElementById(id);
+  if (el) { el.textContent = msg; el.style.color = isError ? '#f77' : '#4fc3f7'; }
+}
 </script>
 </body>
 </html>"""
@@ -237,6 +334,99 @@ def api_stats():
 @app.route("/api/health")
 def api_health():
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    if request.method == "POST":
+        data = request.get_json() or {}
+        filters = data.get("product_filters", [])
+        if isinstance(filters, str):
+            filters = [s.strip() for s in filters.split(",") if s.strip()]
+        db.save_email_config(
+            host=data.get("smtp_host", ""),
+            port=int(data.get("smtp_port", 587)),
+            user=data.get("smtp_user", ""),
+            passw=data.get("smtp_pass", ""),
+            from_email=data.get("from_email", ""),
+            to_email=data.get("to_email", ""),
+            cc_email=data.get("cc_email", ""),
+            filters=filters,
+            enabled=data.get("enabled", False),
+        )
+        return jsonify({"status": "ok"})
+    config = db.get_email_config()
+    profiles = db.get_active_profiles()
+    return jsonify({"email_config": config, "profiles": profiles})
+
+
+@app.route("/api/crawl", methods=["POST"])
+def api_crawl():
+    """Crawler-ek futtatása — Coolify-ben vagy cron-ból hívható"""
+    import subprocess, sys as _sys
+    results = {}
+    base = os.path.dirname(__file__)
+    for name in ["crawler_nebih", "crawler_kozlony"]:
+        try:
+            r = subprocess.run([_sys.executable, os.path.join(base, f"{name}.py")],
+                              capture_output=True, text=True, timeout=120)
+            results[name] = {"exit": r.returncode, "out": r.stdout[-200:], "err": r.stderr[-200:]}
+        except Exception as e:
+            results[name] = {"error": str(e)}
+    db.init_db()
+    return jsonify(results)
+
+
+@app.route("/api/send-digest", methods=["POST"])
+def api_send_digest():
+    """Email értesítés küldése a beállított címekre"""
+    import smtplib, email.message
+    config = db.get_email_config()
+    if not config or not config.get("enabled"):
+        return jsonify({"error": "Email nincs konfigurálva vagy letiltva"}), 400
+    
+    items = db.get_unnotified_relevant()
+    if not items:
+        return jsonify({"message": "Nincs új releváns elem", "sent": 0})
+    
+    # Email összeállítása
+    msg = email.message.EmailMessage()
+    msg["Subject"] = f"📋 Élelmiszer-jogfigyelő — {len(items)} új releváns változás"
+    msg["From"] = config.get("from_email", "")
+    msg["To"] = config.get("to_email", "")
+    if config.get("cc_email"):
+        msg["Cc"] = config["cc_email"]
+    
+    body = "Élelmiszer-jogfigyelő — AI compliance összefoglaló\n" + "="*50 + "\n\n"
+    for it in items:
+        body += f"• [{it.get('category','?')}] {it['title']}\n"
+        if it.get("impact_summary"):
+            body += f"  📝 {it['impact_summary'][:200]}\n"
+        if it.get("action_required"):
+            body += f"  ⚡ {it['action_required'][:200]}\n"
+        if it.get("deadline"):
+            body += f"  ⏰ Határidő: {it['deadline']}\n"
+        if it.get("url"):
+            body += f"  🔗 {it['url']}\n"
+        body += "\n"
+    body += "—\nÉlelmiszer-jogfigyelő AI rendszer"
+    
+    msg.set_content(body)
+    
+    # Küldés
+    try:
+        with smtplib.SMTP(config["smtp_host"], config["smtp_port"]) as server:
+            server.starttls()
+            server.login(config["smtp_user"], config.get("smtp_pass", ""))
+            recipients = [config["to_email"]]
+            if config.get("cc_email"):
+                recipients.append(config["cc_email"])
+            server.send_message(msg, from_addr=config["from_email"], to_addrs=recipients)
+        
+        db.mark_notified_batch([it["id"] for it in items])
+        return jsonify({"message": f"✅ {len(items)} email elküldve", "sent": len(items)})
+    except Exception as e:
+        return jsonify({"error": str(e), "sent": 0}), 500
 
 @app.route("/api/daily")
 def api_daily():

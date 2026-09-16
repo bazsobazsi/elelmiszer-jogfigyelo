@@ -61,6 +61,19 @@ CREATE TABLE IF NOT EXISTS crawl_state (
     last_cursor TEXT,
     last_run TEXT
 );
+
+CREATE TABLE IF NOT EXISTS email_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    smtp_host TEXT DEFAULT '',
+    smtp_port INTEGER DEFAULT 587,
+    smtp_user TEXT DEFAULT '',
+    smtp_pass TEXT DEFAULT '',
+    from_email TEXT DEFAULT '',
+    to_email TEXT DEFAULT '',
+    cc_email TEXT DEFAULT '',
+    product_filters TEXT DEFAULT '["húskészítmény","tejtermék","pékáru"]',
+    enabled INTEGER DEFAULT 0
+);
 """
 
 
@@ -174,6 +187,45 @@ def mark_notified(profile_id, item_id):
         "INSERT OR IGNORE INTO notifications (profile_id, item_id) VALUES (?, ?)",
         (profile_id, item_id),
     )
+    conn.commit()
+    conn.close()
+
+
+def get_email_config():
+    conn = get_db()
+    row = conn.execute("SELECT * FROM email_config WHERE id = 1").fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+
+def save_email_config(host, port, user, passw, from_email, to_email, cc_email, filters, enabled):
+    conn = get_db()
+    conn.execute(
+        "INSERT OR REPLACE INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_email, to_email, cc_email, product_filters, enabled) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (host, port, user, passw, from_email, to_email, cc_email, json.dumps(filters), 1 if enabled else 0),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_unnotified_relevant():
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT i.id, i.title, i.url, a.category, a.impact_summary, a.action_required, a.deadline, a.standards_affected, a.product_groups
+           FROM items i
+           JOIN analyses a ON i.id = a.item_id
+           WHERE a.relevant = 1
+             AND i.id NOT IN (SELECT item_id FROM notifications WHERE profile_id = 1)
+           ORDER BY i.fetched_at DESC"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def mark_notified_batch(item_ids, profile_id=1):
+    conn = get_db()
+    for iid in item_ids:
+        conn.execute("INSERT OR IGNORE INTO notifications (profile_id, item_id) VALUES (?, ?)", (profile_id, iid))
     conn.commit()
     conn.close()
 
