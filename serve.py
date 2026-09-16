@@ -119,7 +119,11 @@ a { color: #4fc3f7; }
 
 <div id="page-dashboard">
   <div id="error" style="display:none;" class="error-msg"></div>
-  <div class="stats" id="stats">...</div>
+  <div class="stats" id="stats">
+    <div class="stat-box"><div class="num" id="stat-total">-</div><div class="label">Összes item</div></div>
+    <div class="stat-box"><div class="num" id="stat-relevant">-</div><div class="label">Releváns</div></div>
+    <div class="stat-box"><div class="num" id="stat-sources">-</div><div class="label">Források</div></div>
+  </div>
   <div class="filters">...</div>
   <div id="items"></div>
 </div>
