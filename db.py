@@ -231,6 +231,18 @@ def mark_notified_batch(item_ids, profile_id=1):
     conn.close()
 
 
+def get_filters():
+    conn = get_db()
+    try:
+        sources = [r["source"] for r in conn.execute("SELECT DISTINCT source FROM items ORDER BY source")]
+        categories = [r["category"] for r in conn.execute("SELECT DISTINCT category FROM analyses ORDER BY category") if r["category"]]
+        return {"sources": sources, "categories": categories}
+    except Exception:
+        return {"sources": [], "categories": []}
+    finally:
+        conn.close()
+
+
 def get_daily_digest(date_str=None):
     """Releváns, még nem küldött item-ek egy adott napra"""
     if not date_str:

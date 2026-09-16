@@ -211,10 +211,31 @@ async function loadItems() {
     const res = await fetch('/api/items?' + params);
     if (!res.ok) { showError('API hiba (' + res.status + ')'); return; }
     const data = await res.json();
+    if (!Array.isArray(data)) { showError('API nem lista'); return; }
     renderItems(data);
   } catch(e) {
-    showError('Hiba az adatok betöltésekor: ' + e.message);
+    showError('Hiba: ' + e.message);
   }
+}
+
+async function loadFilters() {
+  try {
+    const res = await fetch('/api/filters');
+    if (!res.ok) return;
+    const data = await res.json();
+    const sf = document.getElementById('filter-source');
+    const cf = document.getElementById('filter-category');
+    const sval = sf.value || '';
+    const cval = cf.value || '';
+    sf.innerHTML = '<option value="">Minden forrás</option>';
+    (data.sources || []).forEach(s => {
+      sf.innerHTML += `<option value="${s}"${s===sval?' selected':''}>${s}</option>`;
+    });
+    cf.innerHTML = '<option value="">Minden kategória</option>';
+    (data.categories || []).forEach(c => {
+      cf.innerHTML += `<option value="${c}"${c===cval?' selected':''}>${c}</option>`;
+    });
+  } catch(e) {}
 }
 
 async function loadStats() {
@@ -273,6 +294,7 @@ function escapeHtml(s) {
 
 loadStats();
 loadItems();
+loadFilters();
 
 // ── Settings / Tab functions ──
 let settingsUnlocked = false;
@@ -444,6 +466,15 @@ def api_items():
         filtered.append(item)
 
     return jsonify(filtered)
+
+
+@app.route("/api/filters")
+def api_filters():
+    try:
+        return jsonify(db.get_filters())
+    except Exception as e:
+        log.error(f"Filters API error: {e}")
+        return jsonify({"sources": [], "categories": []})
 
 
 @app.route("/api/stats")
