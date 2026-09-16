@@ -45,6 +45,23 @@ if not os.path.exists(db.DB_PATH):
     subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "db.py")])
     print("✅ DB inicializálva")
 
+# Auto-seed: ha nincs adat, seed_data.json-ból töltjük
+seed_lock = os.path.join(db.DB_DIR, ".seeded")
+if not os.path.exists(seed_lock):
+    seed_path = os.path.join(os.path.dirname(__file__), "seed_data.json")
+    if os.path.exists(seed_path):
+        try:
+            import subprocess as _sub, sys as _sys
+            r = _sub.run([_sys.executable, os.path.join(os.path.dirname(__file__), "seed.py")],
+                        capture_output=True, text=True, timeout=30)
+            if r.returncode == 0:
+                print("✅ Auto-seed: seed_data.json betöltve")
+            else:
+                print(f"⚠️  Auto-seed hiba: {r.stderr[-200:]}")
+            open(seed_lock, "w").close()
+        except Exception as e:
+            print(f"⚠️  Auto-seed exception: {e}")
+
 # ── HTML TEMPLATE (dark theme, mobilfirst) ──
 
 INDEX_HTML = """<!DOCTYPE html>
