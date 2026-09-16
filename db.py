@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS email_config (
     to_email TEXT DEFAULT '',
     cc_email TEXT DEFAULT '',
     product_filters TEXT DEFAULT '["húskészítmény","tejtermék","pékáru"]',
-    enabled INTEGER DEFAULT 0
+    enabled INTEGER DEFAULT 0,
+    send_time TEXT DEFAULT '08:00'
 );
 """
 
@@ -198,11 +199,11 @@ def get_email_config():
     return dict(row) if row else {}
 
 
-def save_email_config(host, port, user, passw, from_email, to_email, cc_email, filters, enabled):
+def save_email_config(host, port, user, passw, from_email, to_email, cc_email, filters, enabled, send_time="08:00"):
     conn = get_db()
     conn.execute(
-        "INSERT OR REPLACE INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_email, to_email, cc_email, product_filters, enabled) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (host, port, user, passw, from_email, to_email, cc_email, json.dumps(filters), 1 if enabled else 0),
+        "INSERT OR REPLACE INTO email_config (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_email, to_email, cc_email, product_filters, enabled, send_time) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (host, port, user, passw, from_email, to_email, cc_email, json.dumps(filters), 1 if enabled else 0, send_time),
     )
     conn.commit()
     conn.close()

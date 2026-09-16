@@ -126,6 +126,7 @@ a { color: #4fc3f7; }
     <div class="form-group">
       <label><input id="email_enabled" type="checkbox"> Email értesítés bekapcsolva</label>
     </div>
+    <div class="form-group"><label>Küldés időpontja (óra:perc)</label><input id="send_time" class="form-input" value="08:00" placeholder="08:00" style="width:120px;"></div>
     <div class="form-actions">
       <button class="btn-primary" onclick="saveSettings()">💾 Mentés</button>
       <button class="btn-secondary" onclick="testEmail()">📨 Teszt email</button>
@@ -242,6 +243,7 @@ async function loadSettings() {
     try { filters = JSON.parse(filters).join(', '); } catch(e) {}
     document.getElementById('product_filters').value = filters;
     document.getElementById('email_enabled').checked = c.enabled ? true : false;
+    document.getElementById('send_time').value = c.send_time || '08:00';
     
     // Összefoglaló frissítése
     const summary = document.getElementById('settings-summary');
@@ -252,7 +254,7 @@ async function loadSettings() {
       document.getElementById('summ-to').textContent = '📨 Címzettek: ' + c.to_email;
       document.getElementById('summ-cc').textContent = '📨 CC: ' + (c.cc_email || '(nincs)');
       document.getElementById('summ-filters').textContent = '🏷️ Termékszűrők: ' + filters;
-      document.getElementById('summ-from').textContent = 'Feladó: ' + (c.from_email || c.smtp_user || '?');
+      document.getElementById('summ-from').textContent = 'Feladó: ' + (c.from_email || c.smtp_user || '?') + ' · Küldés: ' + (c.send_time || '08:00') + '-kor';
     } else if (c.to_email && !c.enabled) {
       summary.style.display = '';
       document.getElementById('summ-status').textContent = '⏸️ Email értesítés KI van kapcsolva';
@@ -281,6 +283,7 @@ async function saveSettings() {
     cc_email: document.getElementById('cc_email').value,
     product_filters: filters,
     enabled: document.getElementById('email_enabled').checked,
+    send_time: document.getElementById('send_time').value || '08:00',
   };
   try {
     const res = await fetch('/api/settings', {method:'POST', body:JSON.stringify(data), headers:{'Content-Type':'application/json'}});
@@ -390,6 +393,7 @@ def api_settings():
             cc_email=data.get("cc_email", ""),
             filters=filters,
             enabled=data.get("enabled", False),
+            send_time=data.get("send_time", "08:00"),
         )
         return jsonify({"status": "ok"})
     config = db.get_email_config()
