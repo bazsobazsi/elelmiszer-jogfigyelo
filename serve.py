@@ -6,11 +6,37 @@ Dark theme, mobilfirst, chart-ek, szűrők
 import json
 import os
 import sys
+import logging
 
 from flask import Flask, jsonify, render_template_string, request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db
+
+# Logolás beállítása — minden kimenjen stdout-ra
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s %(levelname)s %(message)s')
+log = logging.getLogger(__name__)
+
+app = Flask(__name__)
+
+# Admin jelszó ellenőrzés
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+
+def require_auth():
+    """GET kérésekhez auth header ellenőrzés (Bearer token)"""
+    auth = request.headers.get("Authorization", "")
+    if ADMIN_PASSWORD and not auth.startswith("Bearer "):
+        return False
+    token = auth.replace("Bearer ", "", 1) if auth else ""
+    return (not ADMIN_PASSWORD) or (token == ADMIN_PASSWORD)
+
+def require_auth_post():
+    """POST kérésekhez auth ellenőrzés JSON body-ból vagy header-ből"""
+    if not ADMIN_PASSWORD:
+        return True
+    data = request.get_json(silent=True) or {}
+    pw = data.get("admin_password", "") or request.headers.get("X-Admin-Key", "")
+    return pw == ADMIN_PASSWORD
 
 # DB auto-init ha nem létezik
 if not os.path.exists(db.DB_PATH):
@@ -18,8 +44,6 @@ if not os.path.exists(db.DB_PATH):
     import subprocess
     subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "db.py")])
     print("✅ DB inicializálva")
-
-app = Flask(__name__)
 
 # ── HTML TEMPLATE (dark theme, mobilfirst) ──
 
@@ -103,6 +127,17 @@ a { color: #4fc3f7; }
 <div id="page-settings" style="display:none;">
   <h2 style="margin-bottom:12px;">📧 Email értesítés</h2>
   
+  <!-- Admin jelszó mező (ha nincs beállítva, nem kell) -->
+  <div id="admin-section" class="card" style="margin-bottom:12px;">
+    <div class="form-group"><label>Admin jelszó (a beállítások módosításához)</label>
+      <div style="display:flex; gap:8px;">
+        <input id="admin_pass" type="password" class="form-input" placeholder="A Coolify ADMIN_PASSWORD környezeti változó értéke" style="flex:1;">
+        <button class="btn-secondary" onclick="unlockSettings()">🔓 Feloldás</button>
+      </div>
+    </div>
+    <div id="admin-status" class="form-status"></div>
+  </div>
+  
   <!-- Jelenlegi beállítások összefoglaló -->
   <div id="settings-summary" class="card" style="margin-bottom:12px; display:none;">
     <div style="font-size:0.85rem;">
@@ -114,7 +149,8 @@ a { color: #4fc3f7; }
     </div>
   </div>
   
-  <div class="card">
+  <div id="settings-form" style="display:none;">
+    <div class="card">
     <div class="form-group"><label>SMTP szerver</label><input id="smtp_host" class="form-input" placeholder="smtp.gmail.com"></div>
     <div class="form-group"><label>Port</label><input id="smtp_port" class="form-input" value="587" placeholder="587"></div>
     <div class="form-group"><label>SMTP felhasználó</label><input id="smtp_user" class="form-input" placeholder="email@example.com"></div>
@@ -139,6 +175,7 @@ a { color: #4fc3f7; }
     <button class="btn-primary" onclick="runCrawlers()">▶️ Crawler-ek futtatása</button>
     <div id="crawl-status" class="form-status" style="margin-top:8px;"></div>
   </div>
+  </div> <!-- settings-form vége -->
 </div>
 
 <script>
@@ -156,6 +193,7 @@ async function loadItems() {
   const params = new URLSearchParams({ source, category, relevant });
   try {
     const res = await fetch('/api/items?' + params);
+    if (!res.ok) { showError('API hiba (' + res.status + ')'); return; }
     const data = await res.json();
     renderItems(data);
   } catch(e) {
@@ -166,12 +204,13 @@ async function loadItems() {
 async function loadStats() {
   try {
     const res = await fetch('/api/stats');
+    if (!res.ok) { showError('API hiba (' + res.status + ')'); return; }
     const data = await res.json();
     document.getElementById('stat-total').textContent = data.total_items || '0';
     document.getElementById('stat-relevant').textContent = data.relevant_count || '0';
     document.getElementById('stat-sources').textContent = data.sources || '0';
   } catch(e) {
-    showError('Hiba a statisztika betöltésekor');
+    showError('Hiba a statisztika betöltésekor: ' + e.message);
   }
 }
 
@@ -220,6 +259,8 @@ loadStats();
 loadItems();
 
 // ── Settings / Tab functions ──
+let settingsUnlocked = false;
+
 function showTab(name) {
   document.getElementById('page-dashboard').style.display = name === 'dashboard' ? '' : 'none';
   document.getElementById('page-settings').style.display = name === 'settings' ? '' : 'none';
@@ -230,7 +271,11 @@ function showTab(name) {
 
 async function loadSettings() {
   try {
-    const res = await fetch('/api/settings');
+    const headers = {};
+    const pw = getAdminPass();
+    if (pw) headers['Authorization'] = 'Bearer ' + pw;
+    const res = await fetch('/api/settings', {headers});
+    if (!res.ok) { setStatus('settings-status', '❌ Hitelesítés szükséges', true); return; }
     const data = await res.json();
     const c = data.email_config || {};
     document.getElementById('smtp_host').value = c.smtp_host || '';
@@ -273,6 +318,7 @@ async function loadSettings() {
 
 async function saveSettings() {
   const filters = document.getElementById('product_filters').value.split(',').map(s => s.trim()).filter(Boolean);
+  const pw = getAdminPass();
   const data = {
     smtp_host: document.getElementById('smtp_host').value,
     smtp_port: parseInt(document.getElementById('smtp_port').value) || 587,
@@ -284,11 +330,12 @@ async function saveSettings() {
     product_filters: filters,
     enabled: document.getElementById('email_enabled').checked,
     send_time: document.getElementById('send_time').value || '08:00',
+    admin_password: pw,
   };
   try {
     const res = await fetch('/api/settings', {method:'POST', body:JSON.stringify(data), headers:{'Content-Type':'application/json'}});
     const r = await res.json();
-    setStatus('settings-status', r.status === 'ok' ? '✅ Mentve' : '❌ Hiba');
+    setStatus('settings-status', r.status === 'ok' ? '✅ Mentve' : '❌ ' + (r.error || 'Hiba'));
   } catch(e) {
     setStatus('settings-status', '❌ Hálózati hiba', true);
   }
@@ -297,8 +344,9 @@ async function saveSettings() {
 async function testEmail() {
   setStatus('settings-status', '⏳ Email küldése...');
   await saveSettings();
+  const pw = getAdminPass();
   try {
-    const res = await fetch('/api/send-digest', {method:'POST'});
+    const res = await fetch('/api/send-digest', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({admin_password: pw})});
     const r = await res.json();
     if (r.sent > 0) setStatus('settings-status', `✅ ${r.sent} email elküldve`);
     else setStatus('settings-status', '⚠️ ' + (r.message || r.error || 'Ismeretlen hiba'));
@@ -309,14 +357,16 @@ async function testEmail() {
 
 async function runCrawlers() {
   setStatus('crawl-status', '⏳ Crawler-ek futtatása...');
+  const pw = getAdminPass();
   try {
-    const res = await fetch('/api/crawl', {method:'POST'});
+    const res = await fetch('/api/crawl', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({admin_password: pw})});
     const r = await res.json();
-    let out = '';
-    for (const [name, result] of Object.entries(r)) {
-      out += `${name}: exit=${result.exit || 'error'}\n`;
+    if (r.nebih && r.nebih.exit === 0) {
+      setStatus('crawl-status', '✅ Crawler kész. Frissítsd a dashboard-ot!');
+    } else {
+      let err = Object.values(r).map(v => v.exit || v.error).join(', ');
+      setStatus('crawl-status', '⚠️ ' + err, true);
     }
-    setStatus('crawl-status', '✅ Crawler kész. Frissítsd a dashboard-ot az adatokért!');
   } catch(e) {
     setStatus('crawl-status', '❌ Hiba: ' + e.message, true);
   }
@@ -325,6 +375,19 @@ async function runCrawlers() {
 function setStatus(id, msg, isError) {
   const el = document.getElementById(id);
   if (el) { el.textContent = msg; el.style.color = isError ? '#f77' : '#4fc3f7'; }
+}
+
+function getAdminPass() {
+  return document.getElementById('admin_pass') ? document.getElementById('admin_pass').value : '';
+}
+
+function unlockSettings() {
+  const pw = getAdminPass();
+  if (!pw) { setStatus('admin-status', 'Add meg az admin jelszót', true); return; }
+  fetch('/api/settings', {headers:{'Authorization':'Bearer '+pw}})
+    .then(r => { if(r.ok) { settingsUnlocked = true; document.getElementById('settings-form').style.display=''; setStatus('admin-status', '✅ Feloldva'); loadSettings(); }
+      else { setStatus('admin-status', '❌ Rossz jelszó', true); } })
+    .catch(e => setStatus('admin-status', '❌ Hiba: '+e.message, true));
 }
 </script>
 </body>
@@ -379,23 +442,29 @@ def api_health():
 @app.route("/api/settings", methods=["GET", "POST"])
 def api_settings():
     if request.method == "POST":
-        data = request.get_json() or {}
+        if ADMIN_PASSWORD and not require_auth_post():
+            return jsonify({"error": "Unauthorized"}), 401
+        data = request.get_json(silent=True) or {}
         filters = data.get("product_filters", [])
         if isinstance(filters, str):
             filters = [s.strip() for s in filters.split(",") if s.strip()]
-        db.save_email_config(
-            host=data.get("smtp_host", ""),
-            port=int(data.get("smtp_port", 587)),
-            user=data.get("smtp_user", ""),
-            passw=data.get("smtp_pass", ""),
-            from_email=data.get("from_email", ""),
-            to_email=data.get("to_email", ""),
-            cc_email=data.get("cc_email", ""),
-            filters=filters,
-            enabled=data.get("enabled", False),
-            send_time=data.get("send_time", "08:00"),
-        )
-        return jsonify({"status": "ok"})
+        try:
+            db.save_email_config(
+                host=data.get("smtp_host", ""),
+                port=int(data.get("smtp_port", 587)),
+                user=data.get("smtp_user", ""),
+                passw=data.get("smtp_pass", ""),
+                from_email=data.get("from_email", ""),
+                to_email=data.get("to_email", ""),
+                cc_email=data.get("cc_email", ""),
+                filters=filters,
+                enabled=data.get("enabled", False),
+                send_time=data.get("send_time", "08:00"),
+            )
+            return jsonify({"status": "ok"})
+        except Exception as e:
+            log.error(f"Settings save error: {e}")
+            return jsonify({"error": str(e)}), 500
     config = db.get_email_config()
     profiles = db.get_active_profiles()
     return jsonify({"email_config": config, "profiles": profiles})
@@ -404,6 +473,8 @@ def api_settings():
 @app.route("/api/crawl", methods=["POST"])
 def api_crawl():
     """Crawler-ek futtatása — Coolify-ben vagy cron-ból hívható"""
+    if ADMIN_PASSWORD and not require_auth_post():
+        return jsonify({"error": "Unauthorized"}), 401
     import subprocess, sys as _sys
     results = {}
     base = os.path.dirname(__file__)
@@ -413,14 +484,20 @@ def api_crawl():
                               capture_output=True, text=True, timeout=120)
             results[name] = {"exit": r.returncode, "out": r.stdout[-200:], "err": r.stderr[-200:]}
         except Exception as e:
+            log.error(f"Crawl {name} error: {e}")
             results[name] = {"error": str(e)}
-    db.init_db()
+    try:
+        db.init_db()
+    except Exception as e:
+        log.error(f"DB init after crawl: {e}")
     return jsonify(results)
 
 
 @app.route("/api/send-digest", methods=["POST"])
 def api_send_digest():
     """Email értesítés küldése a beállított címekre"""
+    if ADMIN_PASSWORD and not require_auth_post():
+        return jsonify({"error": "Unauthorized"}), 401
     import smtplib, email.message
     config = db.get_email_config()
     if not config or not config.get("enabled"):
