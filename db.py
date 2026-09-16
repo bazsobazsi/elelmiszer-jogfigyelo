@@ -285,25 +285,25 @@ def get_items_with_analysis(limit=50, offset=0):
 
 def get_stats():
     conn = get_db()
-    row = conn.execute(
-        """SELECT
-            COUNT(*) as total_items,
-            SUM(CASE WHEN i.fetched_at >= date('now') THEN 1 ELSE 0 END) as today_items,
-            (SELECT COUNT(*) FROM items WHERE fetched_at >= date('now')) as today_total
-           FROM items i"""
-    ).fetchone()
-    relevant = conn.execute(
-        "SELECT COUNT(*) as c FROM analyses a JOIN items i ON a.item_id = i.id WHERE a.relevant = 1 AND date(i.fetched_at) = date('now')"
-    ).fetchone()
-    sources = conn.execute(
-        "SELECT COUNT(DISTINCT source) as c FROM items"
-    ).fetchone()
-    conn.close()
-    return {
-        "total_items": row["today_total"] if row else 0,
-        "relevant_count": relevant["c"] if relevant else 0,
-        "sources": sources["c"] if sources else 0,
-    }
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) as total_items FROM items"
+        ).fetchone() or {"total_items": 0}
+        relevant = conn.execute(
+            "SELECT COUNT(*) as c FROM analyses WHERE relevant = 1"
+        ).fetchone() or {"c": 0}
+        sources = conn.execute(
+            "SELECT COUNT(DISTINCT source) as c FROM items"
+        ).fetchone() or {"c": 0}
+        return {
+            "total_items": row["total_items"],
+            "relevant_count": relevant["c"],
+            "sources": sources["c"],
+        }
+    except Exception as e:
+        return {"total_items": 0, "relevant_count": 0, "sources": 0, "error": str(e)}
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

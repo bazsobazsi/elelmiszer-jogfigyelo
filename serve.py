@@ -328,7 +328,10 @@ def api_items():
 
 @app.route("/api/stats")
 def api_stats():
-    return jsonify(db.get_stats())
+    try:
+        return jsonify(db.get_stats())
+    except Exception as e:
+        return jsonify({"total_items": 0, "relevant_count": 0, "sources": 0, "error": str(e)})
 
 
 @app.route("/api/health")
@@ -413,18 +416,18 @@ def api_send_digest():
     
     msg.set_content(body)
     
-    # Küldés
+    # Küldés — több címzett (vesszővel elválasztva)
     try:
         with smtplib.SMTP(config["smtp_host"], config["smtp_port"]) as server:
             server.starttls()
             server.login(config["smtp_user"], config.get("smtp_pass", ""))
-            recipients = [config["to_email"]]
+            recipients = [e.strip() for e in config["to_email"].split(",") if e.strip()]
             if config.get("cc_email"):
-                recipients.append(config["cc_email"])
+                recipients += [e.strip() for e in config["cc_email"].split(",") if e.strip()]
             server.send_message(msg, from_addr=config["from_email"], to_addrs=recipients)
         
         db.mark_notified_batch([it["id"] for it in items])
-        return jsonify({"message": f"✅ {len(items)} email elküldve", "sent": len(items)})
+        return jsonify({"message": f"✅ {len(items)} email elküldve {len(recipients)} címre", "sent": len(items)})
     except Exception as e:
         return jsonify({"error": str(e), "sent": 0}), 500
 
