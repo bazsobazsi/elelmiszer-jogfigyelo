@@ -124,7 +124,19 @@ a { color: #4fc3f7; }
     <div class="stat-box"><div class="num" id="stat-relevant">-</div><div class="label">Releváns</div></div>
     <div class="stat-box"><div class="num" id="stat-sources">-</div><div class="label">Források</div></div>
   </div>
-  <div class="filters">...</div>
+  <div class="filters" id="filters">
+      <select id="filter-source" onchange="loadItems()">
+        <option value="">Minden forrás</option>
+      </select>
+      <select id="filter-category" onchange="loadItems()">
+        <option value="">Minden kategória</option>
+      </select>
+      <select id="filter-relevant" onchange="loadItems()">
+        <option value="">Relevancia szerint</option>
+        <option value="1">Csak releváns</option>
+        <option value="0">Csak nem releváns</option>
+      </select>
+    </div>
   <div id="items"></div>
 </div>
 
@@ -365,14 +377,18 @@ async function runCrawlers() {
   try {
     const res = await fetch('/api/crawl', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({admin_password: pw})});
     const r = await res.json();
-    if (r.nebih && r.nebih.exit === 0) {
+    let errs = [];
+    for (const [name, res] of Object.entries(r)) {
+      if (res.exit === 0) continue;
+      errs.push(`${name}: ${res.error || res.err || 'exit='+res.exit}`);
+    }
+    if (errs.length === 0) {
       setStatus('crawl-status', '✅ Crawler kész. Frissítsd a dashboard-ot!');
     } else {
-      let err = Object.values(r).map(v => v.exit || v.error).join(', ');
-      setStatus('crawl-status', '⚠️ ' + err, true);
+      setStatus('crawl-status', '⚠️ ' + errs.join(' | '), true);
     }
   } catch(e) {
-    setStatus('crawl-status', '❌ Hiba: ' + e.message, true);
+    setStatus('crawl-status', '❌ Hálózati hiba: ' + e.message, true);
   }
 }
 
