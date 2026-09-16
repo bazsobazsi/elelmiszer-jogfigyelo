@@ -101,15 +101,27 @@ a { color: #4fc3f7; }
 </div>
 
 <div id="page-settings" style="display:none;">
-  <h2 style="margin-bottom:12px;">📧 Email értesítés beállításai</h2>
+  <h2 style="margin-bottom:12px;">📧 Email értesítés</h2>
+  
+  <!-- Jelenlegi beállítások összefoglaló -->
+  <div id="settings-summary" class="card" style="margin-bottom:12px; display:none;">
+    <div style="font-size:0.85rem;">
+      <div id="summ-status" style="margin-bottom:6px;"></div>
+      <div id="summ-to" style="color:#aaa; margin-bottom:2px;"></div>
+      <div id="summ-cc" style="color:#aaa; margin-bottom:2px;"></div>
+      <div id="summ-filters" style="color:#aaa; margin-bottom:2px;"></div>
+      <div id="summ-from" style="color:#666; font-size:0.75rem; margin-top:4px;"></div>
+    </div>
+  </div>
+  
   <div class="card">
     <div class="form-group"><label>SMTP szerver</label><input id="smtp_host" class="form-input" placeholder="smtp.gmail.com"></div>
     <div class="form-group"><label>Port</label><input id="smtp_port" class="form-input" value="587" placeholder="587"></div>
     <div class="form-group"><label>SMTP felhasználó</label><input id="smtp_user" class="form-input" placeholder="email@example.com"></div>
     <div class="form-group"><label>SMTP jelszó</label><input id="smtp_pass" type="password" class="form-input" placeholder="****"></div>
     <div class="form-group"><label>Feladó email</label><input id="from_email" class="form-input" placeholder="jogfigyelo@example.com"></div>
-    <div class="form-group"><label>Címzett (ügyfél)</label><input id="to_email" class="form-input" placeholder="ugyfel@ceg.hu"></div>
-    <div class="form-group"><label>CC (kontroll)</label><input id="cc_email" class="form-input" placeholder="kontroll@ceg.hu"></div>
+    <div class="form-group"><label>Címzett(ek) (vesszővel több is)</label><input id="to_email" class="form-input" placeholder="ugyfel1@ceg.hu, ugyfel2@ceg.hu"></div>
+    <div class="form-group"><label>CC (kontroll — vesszővel több is)</label><input id="cc_email" class="form-input" placeholder="kontroll@ceg.hu"></div>
     <div class="form-group"><label>Termékszűrők (vesszővel)</label><input id="product_filters" class="form-input" placeholder="húskészítmény, tejtermék, pékáru"></div>
     <div class="form-group">
       <label><input id="email_enabled" type="checkbox"> Email értesítés bekapcsolva</label>
@@ -230,6 +242,28 @@ async function loadSettings() {
     try { filters = JSON.parse(filters).join(', '); } catch(e) {}
     document.getElementById('product_filters').value = filters;
     document.getElementById('email_enabled').checked = c.enabled ? true : false;
+    
+    // Összefoglaló frissítése
+    const summary = document.getElementById('settings-summary');
+    if (c.to_email && c.enabled) {
+      summary.style.display = '';
+      document.getElementById('summ-status').textContent = '✅ Email értesítés BEKAPCSOLVA';
+      document.getElementById('summ-status').style.color = '#7f7';
+      document.getElementById('summ-to').textContent = '📨 Címzettek: ' + c.to_email;
+      document.getElementById('summ-cc').textContent = '📨 CC: ' + (c.cc_email || '(nincs)');
+      document.getElementById('summ-filters').textContent = '🏷️ Termékszűrők: ' + filters;
+      document.getElementById('summ-from').textContent = 'Feladó: ' + (c.from_email || c.smtp_user || '?');
+    } else if (c.to_email && !c.enabled) {
+      summary.style.display = '';
+      document.getElementById('summ-status').textContent = '⏸️ Email értesítés KI van kapcsolva';
+      document.getElementById('summ-status').style.color = '#ff7';
+      document.getElementById('summ-to').textContent = '📨 Címzettek: ' + c.to_email;
+      document.getElementById('summ-cc').textContent = '📨 CC: ' + (c.cc_email || '(nincs)');
+      document.getElementById('summ-filters').textContent = '🏷️ Termékszűrők: ' + filters;
+      document.getElementById('summ-from').textContent = 'Feladó: ' + (c.from_email || c.smtp_user || '?');
+    } else {
+      summary.style.display = 'none';
+    }
   } catch(e) {
     setStatus('settings-status', '❌ Hiba a beállítások betöltésekor', true);
   }
