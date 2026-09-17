@@ -75,6 +75,17 @@ CREATE TABLE IF NOT EXISTS email_config (
     enabled INTEGER DEFAULT 0,
     send_time TEXT DEFAULT '08:00'
 );
+
+CREATE TABLE IF NOT EXISTS send_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sent_at TEXT DEFAULT (datetime('now')),
+    recipients TEXT NOT NULL DEFAULT '',
+    subject TEXT NOT NULL DEFAULT '',
+    item_count INTEGER DEFAULT 0,
+    item_ids TEXT DEFAULT '[]',
+    status TEXT DEFAULT 'ok',
+    error TEXT DEFAULT ''
+);
 """
 
 
@@ -243,6 +254,47 @@ def get_filters():
         conn.close()
 
 
+
+def add_send_log(recipients, subject, item_count, item_ids, status='ok', error=''):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO send_log (recipients, subject, item_count, item_ids, status, error) VALUES (?, ?, ?, ?, ?, ?)",
+        (recipients, subject, item_count, json.dumps(item_ids), status, error),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_send_log(limit=20):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM send_log ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_unnotified_items():
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT i.id, i.source, i.title, i.url, a.category, a.impact_summary, a.action_required, a.deadline
+           FROM items i
+           JOIN analyses a ON i.id = a.item_id
+           WHERE a.relevant = 1
+             AND i.id NOT IN (SELECT item_id FROM notifications WHERE profile_id = 1)
+           ORDER BY i.fetched_at DESC"""
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def mark_notified_raw(item_ids):
+    conn = get_db()
+    for iid in item_ids:
+        conn.execute("INSERT OR IGNORE INTO notifications (profile_id, item_id) VALUES (1, ?)", (iid,))
+    conn.commit()
+    conn.close()
 def get_daily_digest(date_str=None):
     """Releváns, még nem küldött item-ek egy adott napra"""
     if not date_str:

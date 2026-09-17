@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-Flask dashboard — élelmiszeripari jogszabályfigyelő
-Dark theme, mobilfirst, chart-ek, szűrők
-"""
 import json
 import os
 import sys
@@ -13,17 +8,14 @@ from flask import Flask, jsonify, render_template_string, request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db
 
-# Logolás beállítása — minden kimenjen stdout-ra
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Admin jelszó ellenőrzés
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 def require_auth():
-    """GET kérésekhez auth header ellenőrzés (Bearer token)"""
     auth = request.headers.get("Authorization", "")
     if ADMIN_PASSWORD and not auth.startswith("Bearer "):
         return False
@@ -31,21 +23,18 @@ def require_auth():
     return (not ADMIN_PASSWORD) or (token == ADMIN_PASSWORD)
 
 def require_auth_post():
-    """POST kérésekhez auth ellenőrzés JSON body-ból vagy header-ből"""
     if not ADMIN_PASSWORD:
         return True
     data = request.get_json(silent=True) or {}
     pw = data.get("admin_password", "") or request.headers.get("X-Admin-Key", "")
     return pw == ADMIN_PASSWORD
 
-# DB auto-init ha nem létezik
+# DB init
 if not os.path.exists(db.DB_PATH):
-    print("⚠️  DB nem található — inicializálás...")
     import subprocess
     subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "db.py")])
-    print("✅ DB inicializálva")
 
-# Auto-seed: ha nincs adat, seed_data.json-ból töltjük
+# Auto-seed
 seed_lock = os.path.join(db.DB_DIR, ".seeded")
 if not os.path.exists(seed_lock):
     seed_path = os.path.join(os.path.dirname(__file__), "seed_data.json")
@@ -54,16 +43,12 @@ if not os.path.exists(seed_lock):
             import subprocess as _sub, sys as _sys
             r = _sub.run([_sys.executable, os.path.join(os.path.dirname(__file__), "seed.py")],
                         capture_output=True, text=True, timeout=30)
-            if r.returncode == 0:
-                print("✅ Auto-seed: seed_data.json betöltve")
-            else:
-                print(f"⚠️  Auto-seed hiba: {r.stderr[-200:]}")
+            print("✅ Auto-seed: seed_data.json betöltve" if r.returncode == 0 else f"⚠️  Auto-seed hiba: {r.stderr[-200:]}")
             open(seed_lock, "w").close()
         except Exception as e:
             print(f"⚠️  Auto-seed exception: {e}")
 
-# ── HTML TEMPLATE (dark theme, mobilfirst) ──
-
+# ── HTML ──
 INDEX_HTML = """<!DOCTYPE html>
 <html lang="hu">
 <head>
@@ -71,58 +56,47 @@ INDEX_HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🍽️ Élelmiszer-jogfigyelő</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-       background: #0a0a0f; color: #e0e0e0; padding: 16px; }
-.header { border-bottom: 1px solid #1a1a2e; padding-bottom: 12px; margin-bottom: 16px; }
-.header h1 { font-size: 1.4rem; color: #fff; }
-.header .sub { font-size: 0.85rem; color: #888; margin-top: 4px; }
-.stats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-.stat-box { background: #12121a; border: 1px solid #1a1a2e; border-radius: 8px;
-            padding: 12px 16px; flex: 1; min-width: 100px; text-align: center; }
-.stat-box .num { font-size: 1.6rem; font-weight: 700; color: #4fc3f7; }
-.stat-box .label { font-size: 0.78rem; color: #888; margin-top: 4px; }
-.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-.filters select, .filters input { background: #12121a; border: 1px solid #2a2a3e;
-       color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; }
-.filters button { background: #4fc3f7; color: #0a0a0f; border: none; padding: 8px 16px;
-       border-radius: 6px; font-weight: 600; cursor: pointer; }
-.card { background: #12121a; border: 1px solid #1a1a2e; border-radius: 10px;
-        padding: 14px; margin-bottom: 10px; }
-.card .source { font-size: 0.75rem; color: #666; text-transform: uppercase; }
-.card .title { font-size: 1rem; font-weight: 600; color: #fff; margin: 4px 0; }
-.card .meta { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
-.tag { background: #1a1a2e; border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; color: #aaa; }
-.nav { display:flex; gap:6px; }
-.nav-btn { background:#1a1a2e; border:1px solid #2a2a3e; color:#888; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.82rem; }
-.nav-btn.active { background:#4fc3f7; color:#0a0a0f; border-color:#4fc3f7; }
-.form-group { margin-bottom:10px; }
-.form-group label { display:block; font-size:0.82rem; color:#aaa; margin-bottom:3px; }
-.form-input { background:#1a1a2e; border:1px solid #2a2a3e; color:#e0e0e0; padding:8px; border-radius:6px; font-size:0.85rem; width:100%; max-width:400px; }
-.btn-primary { background:#4fc3f7; color:#0a0a0f; border:none; padding:8px 16px; border-radius:6px; font-weight:600; cursor:pointer; }
-.btn-secondary { background:#2a2a3e; color:#e0e0e0; border:none; padding:8px 16px; border-radius:6px; font-weight:600; cursor:pointer; }
-.form-status { font-size:0.82rem; color:#4fc3f7; }
-.tag.red { background: #2e1a1a; color: #f77; }
-.tag.yellow { background: #2e2a1a; color: #ff7; }
-.tag.blue { background: #1a1a2e; color: #77f; }
-.tag.purple { background: #2e1a3e; color: #c77; }
-.tag.green { background: #1a2e1a; color: #7f7; }
-.card .summary { font-size: 0.85rem; color: #bbb; line-height: 1.4; }
-.card .actions { font-size: 0.82rem; color: #4fc3f7; margin-top: 6px; }
-.card .deadline { font-size: 0.8rem; color: #ff7; margin-top: 4px; }
-.card .link { display: inline-block; margin-top: 6px; font-size: 0.8rem; color: #4fc3f7; text-decoration: none; }
-a { color: #4fc3f7; }
-.empty { text-align: center; padding: 40px; color: #666; }
-.error-msg { background: #2e1a1a; border: 1px solid #5c2a2a; border-radius: 8px; padding: 12px; color: #f77; margin-bottom: 12px; }
-@media (max-width: 600px) {
-  .stat-box { min-width: calc(50% - 4px); }
-  .filters select { width: 100%; }
-}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0f;color:#e0e0e0;padding:16px}
+.header{border-bottom:1px solid #1a1a2e;padding-bottom:12px;margin-bottom:16px}
+.header h1{font-size:1.4rem;color:#fff}
+.header .sub{font-size:0.85rem;color:#888;margin-top:4px}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.stat-box{background:#12121a;border:1px solid #1a1a2e;border-radius:8px;padding:12px 16px;flex:1;min-width:100px;text-align:center}
+.stat-box .num{font-size:1.6rem;font-weight:700;color:#4fc3f7}
+.stat-box .label{font-size:0.78rem;color:#888;margin-top:4px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.filters select,.filters input{background:#12121a;border:1px solid #2a2a3e;color:#e0e0e0;padding:8px 12px;border-radius:6px;font-size:0.85rem}
+.filters button{background:#4fc3f7;color:#0a0a0f;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer}
+.card{background:#12121a;border:1px solid #1a1a2e;border-radius:10px;padding:14px;margin-bottom:10px}
+.card .source{font-size:0.75rem;color:#666;text-transform:uppercase}
+.card .title{font-size:1rem;font-weight:600;color:#fff;margin:4px 0}
+.card .meta{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.tag{background:#1a1a2e;border-radius:4px;padding:2px 8px;font-size:0.75rem;color:#aaa}
+.nav{display:flex;gap:6px}
+.nav-btn{background:#1a1a2e;border:1px solid #2a2a3e;color:#888;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82rem}
+.nav-btn.active{background:#4fc3f7;color:#0a0a0f;border-color:#4fc3f7}
+.tag.red{background:#2e1a1a;color:#f77}
+.tag.yellow{background:#2e2a1a;color:#ff7}
+.tag.blue{background:#1a1a2e;color:#77f}
+.tag.purple{background:#2e1a3e;color:#c77}
+.tag.green{background:#1a2e1a;color:#7f7}
+.empty{text-align:center;padding:40px;color:#666}
+.error-msg{background:#2e1a1a;border:1px solid #5c2a2a;border-radius:8px;padding:12px;color:#f77;margin-bottom:12px}
+.log-table{width:100%;border-collapse:collapse;font-size:0.82rem}
+.log-table th{text-align:left;color:#888;padding:6px 4px;border-bottom:1px solid #2a2a3e}
+.log-table td{padding:6px 4px;border-bottom:1px solid #1a1a2e;color:#ccc}
+.recip-text{color:#4fc3f7;font-size:0.78rem;padding:3px 0}
+.btn-primary{background:#4fc3f7;color:#0a0a0f;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer}
+.btn-secondary{background:#2a2a3e;color:#e0e0e0;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer}
+.form-status{font-size:0.82rem;color:#4fc3f7;margin-top:8px}
+@media(max-width:600px){.stat-box{min-width:calc(50% - 4px)}.filters select{width:100%}}
 </style>
 </head>
 <body>
+
 <div class="header">
-  <div style="display:flex; justify-content:space-between; align-items:center;">
+  <div style="display:flex;justify-content:space-between;align-items:center">
     <div>
       <h1>🍽️ Élelmiszer-jogfigyelő</h1>
       <div class="sub">AI-alapú jogszabály- és szabványfigyelés</div>
@@ -135,108 +109,111 @@ a { color: #4fc3f7; }
 </div>
 
 <div id="page-dashboard">
-  <div id="error" style="display:none;" class="error-msg"></div>
+  <div id="error" style="display:none" class="error-msg"></div>
   <div class="stats" id="stats">
     <div class="stat-box"><div class="num" id="stat-total">-</div><div class="label">Összes item</div></div>
     <div class="stat-box"><div class="num" id="stat-relevant">-</div><div class="label">Releváns</div></div>
     <div class="stat-box"><div class="num" id="stat-sources">-</div><div class="label">Források</div></div>
   </div>
   <div class="filters" id="filters">
-      <select id="filter-source" onchange="loadItems()">
-        <option value="">Minden forrás</option>
-      </select>
-      <select id="filter-category" onchange="loadItems()">
-        <option value="">Minden kategória</option>
-      </select>
-      <select id="filter-relevant" onchange="loadItems()">
-        <option value="">Relevancia szerint</option>
-        <option value="1">Csak releváns</option>
-        <option value="0">Csak nem releváns</option>
-      </select>
-    </div>
+    <select id="filter-source" onchange="loadItems()"><option value="">Minden forrás</option></select>
+    <select id="filter-category" onchange="loadItems()"><option value="">Minden kategória</option></select>
+    <select id="filter-relevant" onchange="loadItems()"><option value="">Relevancia szerint</option><option value="1">Csak releváns</option><option value="0">Csak nem releváns</option></select>
+  </div>
   <div id="items"></div>
 </div>
 
-<div id="page-settings" style="display:none;">
-  <h2 style="margin-bottom:12px;">📧 Email értesítés</h2>
-  
-  <div style="font-size:0.82rem; color:#aaa; background:#12121a; border:1px solid #2a2a3e; border-radius:6px; padding:10px; margin-bottom:12px;">
-    <strong>Kötelező mezők:</strong> SMTP szerver, Port, Felhasználó, Jelszó, Feladó email, Címzett(ek).<br>
-    Először add meg az <strong>admin jelszót</strong> lent → 🔓 Feloldás → utána módosíthatod a beállításokat.
-  </div>
-  
-  <!-- Admin jelszó mező -->
-  <div id="admin-section" class="card" style="margin-bottom:12px;">
-    <div class="form-group"><label>Admin jelszó (a beállítások módosításához)</label>
-      <div style="display:flex; gap:8px;">
-        <input id="admin_pass" type="password" class="form-input" placeholder="A Coolify ADMIN_PASSWORD környezeti változó értéke" style="flex:1;">
-        <button class="btn-secondary" onclick="unlockSettings()">🔓 Feloldás</button>
-      </div>
+<div id="page-settings" style="display:none">
+  <h2 style="margin-bottom:12px">⚙️ Rendszer beállítások</h2>
+
+  <!-- Admin jelszó (ha be van állítva) -->
+  <div id="admin-section" class="card" style="margin-bottom:12px">
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="admin_pass" type="password" class="" style="flex:1;background:#1a1a2e;border:1px solid #2a2a3e;color:#e0e0e0;padding:8px;border-radius:6px;font-size:0.85rem" placeholder="Admin jelszó a megtekintéshez">
+      <button class="btn-secondary" onclick="unlockSettings()">🔓 Feloldás</button>
     </div>
     <div id="admin-status" class="form-status"></div>
   </div>
-  
-  <!-- Jelenlegi beállítások összefoglaló -->
-  <div id="settings-summary" class="card" style="margin-bottom:12px; display:none;">
-    <div style="font-size:0.85rem;">
-      <div id="summ-status" style="margin-bottom:6px;"></div>
-      <div id="summ-to" style="color:#aaa; margin-bottom:2px;"></div>
-      <div id="summ-cc" style="color:#aaa; margin-bottom:2px;"></div>
-      <div id="summ-filters" style="color:#aaa; margin-bottom:2px;"></div>
-      <div id="summ-from" style="color:#666; font-size:0.75rem; margin-top:4px;"></div>
+
+  <!-- Email config összefoglaló (read-only, env-ből) -->
+  <div id="email-summary" class="card" style="margin-bottom:12px;display:none">
+    <h3 style="font-size:0.95rem;margin-bottom:8px">📧 Email értesítés</h3>
+    <div style="font-size:0.85rem;color:#aaa">
+      <div id="email-recipients" style="margin-bottom:2px"></div>
+      <div id="email-cc" style="margin-bottom:2px"></div>
+      <div id="email-schedule" style="margin-bottom:2px"></div>
+      <div id="email-status" style="color:#7f7;margin-top:4px"></div>
     </div>
   </div>
-  
-  <div id="settings-form" style="display:none;">
-    <div class="card">
-    <div class="form-group"><label>SMTP szerver</label><input id="smtp_host" class="form-input" placeholder="smtp.gmail.com"></div>
-    <div class="form-group"><label>Port</label><input id="smtp_port" class="form-input" value="587" placeholder="587"></div>
-    <div class="form-group"><label>SMTP felhasználó</label><input id="smtp_user" class="form-input" placeholder="email@example.com"></div>
-    <div class="form-group"><label>SMTP jelszó</label><input id="smtp_pass" type="password" class="form-input" placeholder="****"></div>
-    <div class="form-group"><label>Feladó email</label><input id="from_email" class="form-input" placeholder="jogfigyelo@example.com"></div>
-    <div class="form-group"><label>Címzett(ek) (vesszővel több is)</label><input id="to_email" class="form-input" placeholder="ugyfel1@ceg.hu, ugyfel2@ceg.hu"></div>
-    <div class="form-group"><label>CC (kontroll — vesszővel több is)</label><input id="cc_email" class="form-input" placeholder="kontroll@ceg.hu"></div>
-    <div class="form-group"><label>Termékszűrők (vesszővel)</label><input id="product_filters" class="form-input" placeholder="húskészítmény, tejtermék, pékáru"></div>
-    <div class="form-group">
-      <label><input id="email_enabled" type="checkbox"> Email értesítés bekapcsolva</label>
-    </div>
-    <div class="form-group"><label>Küldés időpontja (óra:perc)</label><input id="send_time" class="form-input" value="08:00" placeholder="08:00" style="width:120px;"></div>
-    <div class="form-actions">
-      <button class="btn-primary" onclick="saveSettings()">💾 Mentés</button>
-      <button class="btn-secondary" onclick="testEmail()">📨 Teszt email</button>
-    </div>
-    <div id="settings-status" class="form-status" style="margin-top:8px;"></div>
-  </div>
-  
-  <h2 style="margin:16px 0 8px;">🔄 Crawler vezérlés</h2>
-  <div class="card" style="margin-bottom:12px;">
+
+  <!-- Crawler vezérlés -->
+  <div class="card" style="margin-bottom:12px">
+    <h3 style="font-size:0.95rem;margin-bottom:8px">🔄 Crawler vezérlés</h3>
     <button class="btn-primary" onclick="runCrawlers()">▶️ Crawler-ek futtatása</button>
-    <div id="crawl-status" class="form-status" style="margin-top:8px;"></div>
+    <div id="crawl-status" class="form-status"></div>
   </div>
-  </div> <!-- settings-form vége -->
+
+  <!-- Küldési előzmények -->
+  <div class="card">
+    <h3 style="font-size:0.95rem;margin-bottom:8px">📋 Küldési előzmények</h3>
+    <div id="send-log">
+      <div style="color:#666;padding:12px;text-align:center">⏳ Betöltés...</div>
+    </div>
+  </div>
 </div>
 
 <script>
-function showError(msg) {
-  const el = document.getElementById('error');
-  el.textContent = msg;
-  el.style.display = 'block';
-  setTimeout(() => el.style.display = 'none', 8000);
-}
-
 async function loadItems() {
   const source = document.getElementById('filter-source').value;
   const category = document.getElementById('filter-category').value;
   const relevant = document.getElementById('filter-relevant').value;
-  const params = new URLSearchParams({ source, category, relevant });
   try {
-    const res = await fetch('/api/items?' + params);
-    if (!res.ok) { showError('API hiba (' + res.status + ')'); return; }
+    const res = await fetch('/api/items?' + new URLSearchParams({source,category,relevant}));
+    if (!res.ok) throw Error(res.status);
     const data = await res.json();
-    if (!Array.isArray(data)) { showError('API nem lista'); return; }
+    if (!Array.isArray(data)) throw Error('nem lista');
     renderItems(data);
   } catch(e) {
-    showError('Hiba: ' + e.message);
+    document.getElementById('error').style.display='';
+    document.getElementById('error').textContent = 'Hiba: ' + e.message;
+  }
+}
+
+function renderItems(items) {
+  const el = document.getElementById('items');
+  if (!items.length) { el.innerHTML = '<div class="empty">📭 Nincs megjeleníthető elem</div>'; return; }
+  let html = '';
+  for (const it of items) {
+    const cat = it.category || 'egyéb';
+    const src = it.source || '?';
+    const rel = it.relevant ? '<span class="tag green">Releváns</span>' : '';
+    const catTag = `<span class="tag ${['jogszabaly','blue']['modositas','yellow'].includes(cat)?'yellow':''}">${cat}</span>`;
+    html += '<div class="card">';
+    html += `<div class="source">${src}</div>`;
+    html += `<div class="title">${esc(it.title)}</div>`;
+    html += `<div class="meta">${catTag} ${rel}</div>`;
+    if (it.impact_summary) html += `<div class="summary" style="font-size:0.85rem;color:#bbb;line-height:1.4">${esc(it.impact_summary.slice(0,200))}</div>`;
+    if (it.action_required) html += `<div class="actions" style="font-size:0.82rem;color:#4fc3f7;margin-top:6px">⚡ ${esc(it.action_required.slice(0,150))}</div>`;
+    if (it.deadline) html += `<div class="deadline" style="font-size:0.8rem;color:#ff7;margin-top:4px">⏰ Határidő: ${it.deadline}</div>`;
+    if (it.url) html += `<a class="link" style="display:inline-block;margin-top:6px;font-size:0.8rem;color:#4fc3f7;text-decoration:none" href="${it.url}" target="_blank">🔗 Forrás</a>`;
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
+
+async function loadStats() {
+  try {
+    const res = await fetch('/api/stats');
+    if (!res.ok) throw Error(res.status);
+    const data = await res.json();
+    document.getElementById('stat-total').textContent = data.total_items || '0';
+    document.getElementById('stat-relevant').textContent = data.relevant_count || '0';
+    document.getElementById('stat-sources').textContent = data.sources || '0';
+  } catch(e) {
+    document.getElementById('error').style.display='';
+    document.getElementById('error').textContent = 'Statisztika hiba: ' + e.message;
   }
 }
 
@@ -250,313 +227,268 @@ async function loadFilters() {
     const sval = sf.value || '';
     const cval = cf.value || '';
     sf.innerHTML = '<option value="">Minden forrás</option>';
-    (data.sources || []).forEach(s => {
-      sf.innerHTML += `<option value="${s}"${s===sval?' selected':''}>${s}</option>`;
-    });
+    (data.sources||[]).forEach(s => { sf.innerHTML += `<option value="${s}"${s===sval?' selected':''}>${s}</option>`; });
     cf.innerHTML = '<option value="">Minden kategória</option>';
-    (data.categories || []).forEach(c => {
-      cf.innerHTML += `<option value="${c}"${c===cval?' selected':''}>${c}</option>`;
-    });
+    (data.categories||[]).forEach(c => { cf.innerHTML += `<option value="${c}"${c===cval?' selected':''}>${c}</option>`; });
   } catch(e) {}
 }
 
-async function loadStats() {
-  try {
-    const res = await fetch('/api/stats');
-    if (!res.ok) { showError('API hiba (' + res.status + ')'); return; }
-    const data = await res.json();
-    document.getElementById('stat-total').textContent = data.total_items || '0';
-    document.getElementById('stat-relevant').textContent = data.relevant_count || '0';
-    document.getElementById('stat-sources').textContent = data.sources || '0';
-  } catch(e) {
-    showError('Hiba a statisztika betöltésekor: ' + e.message);
-  }
-}
-
-function renderItems(items) {
-  const container = document.getElementById('items');
-  if (!items || items.length === 0) {
-    container.innerHTML = '<div class="empty">📭 Nincs találat</div>';
-    return;
-  }
-  container.innerHTML = items.map(item => {
-    const sourceEmoji = {eurlex:'🔴', rasff:'🟡', kozlony:'🔵', nebih:'📘', szabvany:'🟣', eu_guidance:'📋', nak_ghp:'📕'};
-    const emoji = sourceEmoji[item.source] || '📄';
-    const catLabel = {jogszabaly:'Jogszabály', modositas:'Módosítás', jovahagyas:'Jóváhagyás', riasztas:'Riasztás', iranymutatas:'Irányítás', GMP_utmutato:'GMP Útmutató', export:'Export', egyeb:'Egyéb'};
-    const catTagClass = {jogszabaly:'red', modositas:'red', jovahagyas:'blue', riasztas:'yellow', iranymutatas:'blue', GMP_utmutato:'purple', export:'green', egyeb:''};
-
-    let groups = '';
-    try { const g = JSON.parse(item.product_groups || '[]'); if(g.length) groups = g.join(', '); } catch(e) {}
-    let standards = '';
-    try { const s = JSON.parse(item.standards_affected || '[]'); if(s.length) standards = s.join(', '); } catch(e) {}
-    let summary = item.impact_summary || '';
-    let action = item.action_required || '';
-    let deadline = item.deadline || '';
-
-    return `<div class="card">
-      <div class="source">${emoji} ${item.source.toUpperCase()} · ${catLabel[item.category] || item.category}</div>
-      <div class="title">${escapeHtml(item.title)}</div>
-      <div class="meta">
-        ${groups ? `<span class="tag">🏷️ ${escapeHtml(groups)}</span>` : ''}
-        ${standards ? `<span class="tag">📋 ${escapeHtml(standards)}</span>` : ''}
-        ${item.category ? `<span class="tag ${catTagClass[item.category]||''}">${catLabel[item.category]||item.category}</span>` : ''}
-      </div>
-      ${summary ? `<div class="summary">📝 ${escapeHtml(summary)}</div>` : ''}
-      ${action ? `<div class="actions">⚡ ${escapeHtml(action)}</div>` : ''}
-      ${deadline ? `<div class="deadline">⏰ Határidő: ${escapeHtml(deadline)}</div>` : ''}
-      ${item.url ? `<a class="link" href="${escapeHtml(item.url)}" target="_blank">🔗 Forrás megnyitása →</a>` : ''}
-    </div>`;
-  }).join('');
-}
-
-function escapeHtml(s) {
-  if (!s) return '';
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-loadStats();
-loadItems();
-loadFilters();
-
-// ── Settings / Tab functions ──
+// ── Settings ──
 let settingsUnlocked = false;
 
 function showTab(name) {
   document.getElementById('page-dashboard').style.display = name === 'dashboard' ? '' : 'none';
   document.getElementById('page-settings').style.display = name === 'settings' ? '' : 'none';
-  document.getElementById('tab-dash').className = 'nav-btn' + (name === 'dashboard' ? ' active' : '');
-  document.getElementById('tab-set').className = 'nav-btn' + (name === 'settings' ? ' active' : '');
-  if (name === 'settings') loadSettings();
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + (name === 'dashboard' ? 'dash' : 'set')).classList.add('active');
+  if (name === 'settings') { loadEmailSummary(); loadSendLog(); }
 }
 
-async function loadSettings() {
+function unlockSettings() {
+  const pw = document.getElementById('admin_pass').value;
+  if (!pw) { document.getElementById('admin-status').textContent = 'Add meg az admin jelszót'; return; }
+  fetch('/api/email-summary', {headers:{'Authorization':'Bearer '+pw}})
+    .then(r => { if(r.ok) { settingsUnlocked = true; document.getElementById('admin-status').textContent = '✅ Feloldva'; loadSendLog(); loadEmailSummary(); }
+      else { document.getElementById('admin-status').textContent = '❌ Rossz jelszó'; } })
+    .catch(e => { document.getElementById('admin-status').textContent = '❌ Hiba: '+e.message; });
+}
+
+function getAdminPass() { return document.getElementById('admin_pass') ? document.getElementById('admin_pass').value : ''; }
+
+async function loadEmailSummary() {
+  const pw = getAdminPass();
   try {
-    const headers = {};
-    const pw = getAdminPass();
-    if (pw) headers['Authorization'] = 'Bearer ' + pw;
-    const res = await fetch('/api/settings', {headers});
-    if (!res.ok) { setStatus('settings-status', '❌ Hitelesítés szükséges', true); return; }
+    const res = await fetch('/api/email-summary', {headers:{Authorization:'Bearer '+pw}});
+    if (!res.ok) { document.getElementById('email-summary').style.display='none'; return; }
+    const d = await res.json();
+    if (d.smtp_host) {
+      document.getElementById('email-summary').style.display='';
+      document.getElementById('email-recipients').textContent = '📨 Címzettek: ' + (d.to_email || 'nincs');
+      document.getElementById('email-cc').textContent = '📨 CC: ' + (d.cc_email || '(nincs)');
+      document.getElementById('email-schedule').textContent = '⏰ Küldés: ' + (d.send_time || '08:00') + '-kor · Feladó: ' + (d.from_email || d.smtp_user || '?');
+      document.getElementById('email-status').textContent = d.enabled ? '✅ Bekapcsolva' : '⏸️ Kikapcsolva';
+    } else {
+      document.getElementById('email-summary').style.display='none';
+    }
+  } catch(e) { document.getElementById('email-summary').style.display='none'; }
+}
+
+async function loadSendLog() {
+  const pw = getAdminPass();
+  try {
+    const res = await fetch('/api/send-log', {headers:{Authorization:'Bearer '+pw}});
+    if (!res.ok) { document.getElementById('send-log').innerHTML = '<div style="color:#666;padding:12px;text-align:center">🔒 Feloldás szükséges</div>'; return; }
     const data = await res.json();
-    const c = data.email_config || {};
-    document.getElementById('smtp_host').value = c.smtp_host || '';
-    document.getElementById('smtp_port').value = c.smtp_port || 587;
-    document.getElementById('smtp_user').value = c.smtp_user || '';
-    document.getElementById('from_email').value = c.from_email || '';
-    document.getElementById('to_email').value = c.to_email || '';
-    document.getElementById('cc_email').value = c.cc_email || '';
-    let filters = c.product_filters || '';
-    try { filters = JSON.parse(filters).join(', '); } catch(e) {}
-    document.getElementById('product_filters').value = filters;
-    document.getElementById('email_enabled').checked = c.enabled ? true : false;
-    document.getElementById('send_time').value = c.send_time || '08:00';
-    
-    // Összefoglaló frissítése
-    const summary = document.getElementById('settings-summary');
-    if (c.to_email && c.enabled) {
-      summary.style.display = '';
-      document.getElementById('summ-status').textContent = '✅ Email értesítés BEKAPCSOLVA';
-      document.getElementById('summ-status').style.color = '#7f7';
-      document.getElementById('summ-to').textContent = '📨 Címzettek: ' + c.to_email;
-      document.getElementById('summ-cc').textContent = '📨 CC: ' + (c.cc_email || '(nincs)');
-      document.getElementById('summ-filters').textContent = '🏷️ Termékszűrők: ' + filters;
-      document.getElementById('summ-from').textContent = 'Feladó: ' + (c.from_email || c.smtp_user || '?') + ' · Küldés: ' + (c.send_time || '08:00') + '-kor';
-    } else if (c.to_email && !c.enabled) {
-      summary.style.display = '';
-      document.getElementById('summ-status').textContent = '⏸️ Email értesítés KI van kapcsolva';
-      document.getElementById('summ-status').style.color = '#ff7';
-      document.getElementById('summ-to').textContent = '📨 Címzettek: ' + c.to_email;
-      document.getElementById('summ-cc').textContent = '📨 CC: ' + (c.cc_email || '(nincs)');
-      document.getElementById('summ-filters').textContent = '🏷️ Termékszűrők: ' + filters;
-      document.getElementById('summ-from').textContent = 'Feladó: ' + (c.from_email || c.smtp_user || '?');
-    } else {
-      summary.style.display = 'none';
+    if (!data.length) {
+      document.getElementById('send-log').innerHTML = '<div style="color:#666;padding:12px;text-align:center">📭 Még nem történt email küldés</div>';
+      return;
     }
-  } catch(e) {
-    setStatus('settings-status', '❌ Hiba a beállítások betöltésekor', true);
-  }
-}
-
-async function saveSettings() {
-  const pw = getAdminPass();
-  if (!pw && document.getElementById('admin_pass') && document.getElementById('admin_pass').offsetParent !== null) {
-    setStatus('settings-status', '❌ Először add meg az admin jelszót és kattints a 🔓 Feloldás-ra', true);
-    return;
-  }
-  const filters = document.getElementById('product_filters').value.split(',').map(s => s.trim()).filter(Boolean);
-  const data = {
-    smtp_host: document.getElementById('smtp_host').value,
-    smtp_port: parseInt(document.getElementById('smtp_port').value) || 587,
-    smtp_user: document.getElementById('smtp_user').value,
-    smtp_pass: document.getElementById('smtp_pass').value,
-    from_email: document.getElementById('from_email').value,
-    to_email: document.getElementById('to_email').value,
-    cc_email: document.getElementById('cc_email').value,
-    product_filters: filters,
-    enabled: document.getElementById('email_enabled').checked,
-    send_time: document.getElementById('send_time').value || '08:00',
-    admin_password: pw,
-  };
-  try {
-    const res = await fetch('/api/settings', {method:'POST', body:JSON.stringify(data), headers:{'Content-Type':'application/json'}});
-    const r = await res.json();
-    if (r.status === 'ok') {
-      setStatus('settings-status', '✅ Mentve');
-      loadSettings(); // frissíti az összefoglalót
-    } else if (res.status === 401) {
-      setStatus('settings-status', '❌ ' + (r.error || 'Unauthorized — add meg az admin jelszót a 🔓 Feloldás gombbal'), true);
-    } else {
-      setStatus('settings-status', '❌ ' + (r.error || 'Ismeretlen hiba'), true);
+    let html = '<table class="log-table"><tr><th>Dátum</th><th>Címzett</th><th>Itemek</th><th>Státusz</th></tr>';
+    for (const e of data) {
+      const cls = e.status === 'ok' ? 'green' : 'red';
+      html += `<tr><td>${e.sent_at||'?'}</td><td><div class="recip-text">${esc(e.recipients)}</div></td><td>${e.item_count}</td><td><span class="tag ${cls}">${e.status}</span></td></tr>`;
     }
-  } catch(e) {
-    setStatus('settings-status', '❌ Hálózati hiba', true);
-  }
-}
-
-async function testEmail() {
-  setStatus('settings-status', '⏳ Teszt email küldése...');
-  await saveSettings();
-  const pw = getAdminPass();
-  try {
-    const res = await fetch('/api/test-email', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({admin_password: pw})});
-    const r = await res.json();
-    if (r.sent > 0) setStatus('settings-status', `✅ ${r.message}`);
-    else setStatus('settings-status', '⚠️ ' + (r.error || r.message || 'Ismeretlen'), true);
-  } catch(e) {
-    setStatus('settings-status', '❌ Hálózati hiba: ' + e.message, true);
-  }
+    html += '</table>';
+    document.getElementById('send-log').innerHTML = html;
+  } catch(e) { document.getElementById('send-log').innerHTML = '<div style="color:#f77;padding:12px;text-align:center">❌ Hiba a log betöltésekor</div>'; }
 }
 
 async function runCrawlers() {
-  setStatus('crawl-status', '⏳ Crawler-ek futtatása...');
+  document.getElementById('crawl-status').textContent = '⏳ Crawler-ek futtatása...';
   const pw = getAdminPass();
+  const headers = {'Content-Type':'application/json'};
   try {
-    const res = await fetch('/api/crawl', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({admin_password: pw})});
+    const res = await fetch('/api/crawl', {method:'POST', headers, body:JSON.stringify({admin_password:pw})});
     const r = await res.json();
     let errs = [];
     for (const [name, res] of Object.entries(r)) {
       if (res.exit === 0) continue;
-      errs.push(`${name}: ${res.error || res.err || 'exit='+res.exit}`);
+      errs.push(name + ': ' + (res.error || res.err || 'exit='+res.exit));
     }
-    if (errs.length === 0) {
-      setStatus('crawl-status', '✅ Crawler kész. Frissítsd a dashboard-ot!');
-    } else {
-      setStatus('crawl-status', '⚠️ ' + errs.join(' | '), true);
-    }
-  } catch(e) {
-    setStatus('crawl-status', '❌ Hálózati hiba: ' + e.message, true);
-  }
+    document.getElementById('crawl-status').textContent = errs.length ? '⚠️ ' + errs.join(' | ') : '✅ Crawler kész. Frissítsd a dashboard-ot!';
+  } catch(e) { document.getElementById('crawl-status').textContent = '❌ Hiba: ' + e.message; }
 }
 
-function setStatus(id, msg, isError) {
-  const el = document.getElementById(id);
-  if (el) { el.textContent = msg; el.style.color = isError ? '#f77' : '#4fc3f7'; }
-}
-
-function getAdminPass() {
-  return document.getElementById('admin_pass') ? document.getElementById('admin_pass').value : '';
-}
-
-function unlockSettings() {
-  const pw = getAdminPass();
-  if (!pw) { setStatus('admin-status', 'Add meg az admin jelszót', true); return; }
-  fetch('/api/settings', {headers:{'Authorization':'Bearer '+pw}})
-    .then(r => { if(r.ok) { settingsUnlocked = true; document.getElementById('settings-form').style.display=''; setStatus('admin-status', '✅ Feloldva'); loadSettings(); }
-      else { setStatus('admin-status', '❌ Rossz jelszó', true); } })
-    .catch(e => setStatus('admin-status', '❌ Hiba: '+e.message, true));
-}
+loadStats();
+loadItems();
+loadFilters();
 </script>
 </body>
 </html>"""
-
-
-# ── API ENDPOINTS ──
 
 @app.route("/")
 def index():
     return render_template_string(INDEX_HTML)
 
-
-@app.route("/api/items")
-def api_items():
-    source = request.args.get("source", "")
-    category = request.args.get("category", "")
-    relevant = request.args.get("relevant", "")
-
-    limit = int(request.args.get("limit", 50))
-    offset = int(request.args.get("offset", 0))
-
-    items = db.get_items_with_analysis(limit=limit, offset=offset)
-
-    # Szűrés
-    filtered = []
-    for item in items:
-        if source and item.get("source") != source:
-            continue
-        if category and item.get("category") != category:
-            continue
-        if relevant == "1" and not item.get("relevant"):
-            continue
-        filtered.append(item)
-
-    return jsonify(filtered)
-
-
-@app.route("/api/filters")
-def api_filters():
-    try:
-        return jsonify(db.get_filters())
-    except Exception as e:
-        log.error(f"Filters API error: {e}")
-        return jsonify({"sources": [], "categories": []})
-
+# ── API endpoints ──
 
 @app.route("/api/stats")
 def api_stats():
     try:
         return jsonify(db.get_stats())
     except Exception as e:
+        log.error(f"Stats error: {e}")
         return jsonify({"total_items": 0, "relevant_count": 0, "sources": 0, "error": str(e)})
 
+@app.route("/api/items")
+def api_items():
+    try:
+        source = request.args.get("source", "")
+        category = request.args.get("category", "")
+        relevant = request.args.get("relevant", "")
+        limit = int(request.args.get("limit", 50))
+        offset = int(request.args.get("offset", 0))
+        items = db.get_items_with_analysis(limit=limit, offset=offset)
+        filtered = []
+        for item in items:
+            if source and item.get("source") != source: continue
+            if category and item.get("category") != category: continue
+            if relevant == "1" and not item.get("relevant"): continue
+            filtered.append(item)
+        return jsonify(filtered)
+    except Exception as e:
+        log.error(f"Items error: {e}")
+        return jsonify([]), 500
+
+@app.route("/api/filters")
+def api_filters():
+    try:
+        return jsonify(db.get_filters())
+    except Exception as e:
+        return jsonify({"sources": [], "categories": []})
 
 @app.route("/api/health")
 def api_health():
     return jsonify({"status": "ok"})
 
+# ── Email config (read-only, env-ből) ──
 
-@app.route("/api/settings", methods=["GET", "POST"])
-def api_settings():
-    if request.method == "POST":
-        if ADMIN_PASSWORD and not require_auth_post():
-            return jsonify({"error": "Unauthorized — add meg a helyes admin jelszót a kérésben (admin_password mező vagy X-Admin-Key header)"}), 401
-        data = request.get_json(silent=True) or {}
-        filters = data.get("product_filters", [])
-        if isinstance(filters, str):
-            filters = [s.strip() for s in filters.split(",") if s.strip()]
-        try:
-            db.save_email_config(
-                host=data.get("smtp_host", ""),
-                port=int(data.get("smtp_port", 587)),
-                user=data.get("smtp_user", ""),
-                passw=data.get("smtp_pass", ""),
-                from_email=data.get("from_email", ""),
-                to_email=data.get("to_email", ""),
-                cc_email=data.get("cc_email", ""),
-                filters=filters,
-                enabled=data.get("enabled", False),
-                send_time=data.get("send_time", "08:00"),
-            )
-            return jsonify({"status": "ok"})
-        except Exception as e:
-            log.error(f"Settings save error: {e}")
-            return jsonify({"error": str(e)}), 500
-    config = db.get_email_config()
-    profiles = db.get_active_profiles()
-    return jsonify({"email_config": config, "profiles": profiles})
+@app.route("/api/email-summary")
+def api_email_summary():
+    """SMTP beállítások olvasása környezeti változókból"""
+    return jsonify({
+        "smtp_host": os.environ.get("SMTP_HOST", ""),
+        "smtp_port": int(os.environ.get("SMTP_PORT", 587)),
+        "smtp_user": os.environ.get("SMTP_USER", ""),
+        "from_email": os.environ.get("EMAIL_FROM", ""),
+        "to_email": os.environ.get("EMAIL_TO", ""),
+        "cc_email": os.environ.get("EMAIL_CC", ""),
+        "send_time": os.environ.get("EMAIL_SEND_TIME", "08:00"),
+        "enabled": os.environ.get("EMAIL_ENABLED", "0") == "1",
+    })
 
+# ── Send log ──
+
+@app.route("/api/send-log", methods=["GET"])
+def api_get_send_log():
+    if ADMIN_PASSWORD and not require_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        return jsonify(db.get_send_log())
+    except Exception as e:
+        return jsonify([])
+
+@app.route("/api/send-log", methods=["POST"])
+def api_post_send_log():
+    """Hermes cron hívja, hogy rögzítse a kiküldött emailt"""
+    data = request.get_json(silent=True) or {}
+    try:
+        db.add_send_log(
+            recipients=data.get("recipients", ""),
+            subject=data.get("subject", ""),
+            item_count=data.get("item_count", 0),
+            item_ids=data.get("item_ids", []),
+            status=data.get("status", "ok"),
+            error=data.get("error", ""),
+        )
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ── Digest & send (Hermes cron vagy curl hívja) ──
+
+@app.route("/api/digest-and-send", methods=["POST"])
+def api_digest_and_send():
+    """
+    Hermes cron hívja: összeszedi az új releváns itemeket,
+    elküldi SMTP-n keresztül (env vars), logolja az eredményt.
+    SMTP beállítások környezeti változókból:
+    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, EMAIL_TO, EMAIL_CC
+    """
+    if ADMIN_PASSWORD and not require_auth_post():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    smtp_host = os.environ.get("SMTP_HOST", "")
+    smtp_port = int(os.environ.get("SMTP_PORT", 587))
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_pass = os.environ.get("SMTP_PASS", "")
+    from_email = os.environ.get("EMAIL_FROM", "")
+    to_email = os.environ.get("EMAIL_TO", "")
+    cc_email = os.environ.get("EMAIL_CC", "")
+
+    if not smtp_host or not to_email:
+        return jsonify({"error": "SMTP nincs konfigurálva (SMTP_HOST, EMAIL_TO)", "sent": 0}), 400
+
+    items = db.get_unnotified_items()
+    if not items:
+        return jsonify({"message": "Nincs új releváns elem", "sent": 0})
+
+    import smtplib, email.message
+    recipients = [e.strip() for e in to_email.split(",") if e.strip()]
+    if cc_email:
+        recipients += [e.strip() for e in cc_email.split(",") if e.strip()]
+
+    body = "Élelmiszer-jogfigyelő — AI compliance összefoglaló\n" + "="*50 + "\n\n"
+    for it in items:
+        body += f"• [{it.get('category','?')}] {it['title']}\n"
+        if it.get("impact_summary"): body += f"  📝 {it['impact_summary'][:200]}\n"
+        if it.get("action_required"): body += f"  ⚡ {it['action_required'][:200]}\n"
+        if it.get("deadline"): body += f"  ⏰ Határidő: {it['deadline']}\n"
+        if it.get("url"): body += f"  🔗 {it['url']}\n"
+        body += "\n"
+    body += "—\nÉlelmiszer-jogfigyelő AI rendszer"
+
+    msg = email.message.EmailMessage()
+    msg["Subject"] = f"📋 Élelmiszer-jogfigyelő — {len(items)} új releváns változás"
+    msg["From"] = from_email
+    msg["To"] = to_email
+    if cc_email: msg["Cc"] = cc_email
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg, from_addr=from_email, to_addrs=recipients)
+
+        # Mark notified
+        item_ids = [it["id"] for it in items]
+        db.mark_notified_raw(item_ids)
+
+        # Log
+        db.add_send_log(
+            recipients=to_email + (f" (CC: {cc_email})" if cc_email else ""),
+            subject=f"{len(items)} új releváns változás",
+            item_count=len(items),
+            item_ids=item_ids,
+            status="ok",
+        )
+        return jsonify({"message": f"✅ {len(items)} email elküldve {len(recipients)} címre", "sent": len(items)})
+    except smtplib.SMTPAuthenticationError:
+        err = "SMTP hitelesítés sikertelen"
+        db.add_send_log(recipients=to_email, subject="Hiba", item_count=len(items), item_ids=[it["id"] for it in items], status="error", error=err)
+        return jsonify({"error": err, "sent": 0}), 500
+    except smtplib.SMTPException as e:
+        db.add_send_log(recipients=to_email, subject="Hiba", item_count=len(items), item_ids=[it["id"] for it in items], status="error", error=str(e))
+        return jsonify({"error": f"SMTP hiba: {e}", "sent": 0}), 500
+    except Exception as e:
+        db.add_send_log(recipients=to_email, subject="Hiba", item_count=len(items), item_ids=[it["id"] for it in items], status="error", error=str(e))
+        return jsonify({"error": str(e), "sent": 0}), 500
+
+# ── Crawl ──
 
 @app.route("/api/crawl", methods=["POST"])
 def api_crawl():
-    """Crawler-ek futtatása — Coolify-ben vagy cron-ból hívható"""
     if ADMIN_PASSWORD and not require_auth_post():
         return jsonify({"error": "Unauthorized"}), 401
     import subprocess, sys as _sys
@@ -568,7 +500,7 @@ def api_crawl():
                               capture_output=True, text=True, timeout=120)
             results[name] = {"exit": r.returncode, "out": r.stdout[-200:], "err": r.stderr[-200:]}
         except Exception as e:
-            log.error(f"Crawl {name} error: {e}")
+            log.error(f"Crawl {name}: {e}")
             results[name] = {"error": str(e)}
     try:
         db.init_db()
@@ -576,100 +508,10 @@ def api_crawl():
         log.error(f"DB init after crawl: {e}")
     return jsonify(results)
 
-
-@app.route("/api/send-digest", methods=["POST"])
-def api_send_digest():
-    """Email értesítés küldése a beállított címekre"""
-    if ADMIN_PASSWORD and not require_auth_post():
-        return jsonify({"error": "Unauthorized"}), 401
-    import smtplib, email.message
-    config = db.get_email_config()
-    if not config or not config.get("enabled"):
-        return jsonify({"error": "Email nincs konfigurálva vagy letiltva"}), 400
-    
-    items = db.get_unnotified_relevant()
-    if not items:
-        return jsonify({"message": "Nincs új releváns elem", "sent": 0})
-    
-    # Email összeállítása
-    msg = email.message.EmailMessage()
-    msg["Subject"] = f"📋 Élelmiszer-jogfigyelő — {len(items)} új releváns változás"
-    msg["From"] = config.get("from_email", "")
-    msg["To"] = config.get("to_email", "")
-    if config.get("cc_email"):
-        msg["Cc"] = config["cc_email"]
-    
-    body = "Élelmiszer-jogfigyelő — AI compliance összefoglaló\n" + "="*50 + "\n\n"
-    for it in items:
-        body += f"• [{it.get('category','?')}] {it['title']}\n"
-        if it.get("impact_summary"):
-            body += f"  📝 {it['impact_summary'][:200]}\n"
-        if it.get("action_required"):
-            body += f"  ⚡ {it['action_required'][:200]}\n"
-        if it.get("deadline"):
-            body += f"  ⏰ Határidő: {it['deadline']}\n"
-        if it.get("url"):
-            body += f"  🔗 {it['url']}\n"
-        body += "\n"
-    body += "—\nÉlelmiszer-jogfigyelő AI rendszer"
-    
-    msg.set_content(body)
-    
-    # Küldés — több címzett (vesszővel elválasztva)
-    try:
-        with smtplib.SMTP(config["smtp_host"], config["smtp_port"]) as server:
-            server.starttls()
-            server.login(config["smtp_user"], config.get("smtp_pass", ""))
-            recipients = [e.strip() for e in config["to_email"].split(",") if e.strip()]
-            if config.get("cc_email"):
-                recipients += [e.strip() for e in config["cc_email"].split(",") if e.strip()]
-            server.send_message(msg, from_addr=config["from_email"], to_addrs=recipients)
-        
-        db.mark_notified_batch([it["id"] for it in items])
-        return jsonify({"message": f"✅ {len(items)} email elküldve {len(recipients)} címre", "sent": len(items)})
-    except Exception as e:
-        return jsonify({"error": str(e), "sent": 0}), 500
-
-
-@app.route("/api/test-email", methods=["POST"])
-def api_test_email():
-    """Teszt email — SMTP kapcsolat ellenőrzése"""
-    if ADMIN_PASSWORD and not require_auth_post():
-        return jsonify({"error": "Unauthorized — add meg az admin jelszót"}), 401
-    config = db.get_email_config()
-    if not config or not config.get("smtp_host"):
-        return jsonify({"error": "Nincs SMTP konfigurálva"}), 400
-    import smtplib, email.message
-    msg = email.message.EmailMessage()
-    msg["Subject"] = "🧪 Teszt — Élelmiszer-jogfigyelő"
-    msg["From"] = config.get("from_email", config.get("smtp_user", ""))
-    msg["To"] = config.get("to_email", "")
-    if config.get("cc_email"):
-        msg["Cc"] = config["cc_email"]
-    msg.set_content("Ez egy teszt email. SMTP OK ✅\n\n— Élelmiszer-jogfigyelő")
-    try:
-        recipients = [e.strip() for e in config["to_email"].split(",") if e.strip()]
-        if config.get("cc_email"):
-            recipients += [e.strip() for e in config["cc_email"].split(",") if e.strip()]
-        with smtplib.SMTP(config["smtp_host"], config["smtp_port"]) as server:
-            server.starttls()
-            server.login(config["smtp_user"], config.get("smtp_pass", ""))
-            server.send_message(msg, from_addr=config["from_email"], to_addrs=recipients)
-        return jsonify({"message": f"✅ Teszt email elküldve {len(recipients)} címre", "sent": 1})
-    except smtplib.SMTPAuthenticationError:
-        return jsonify({"error": "SMTP hitelesítés sikertelen — ellenőrizd a felhasználónevet és jelszót"}), 500
-    except smtplib.SMTPException as e:
-        return jsonify({"error": f"SMTP hiba: {e}"}), 500
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
 @app.route("/api/daily")
 def api_daily():
-    import notify
     items = db.get_daily_digest()
     return jsonify(items)
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8768))
