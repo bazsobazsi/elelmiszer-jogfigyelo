@@ -160,7 +160,12 @@ a { color: #4fc3f7; }
 <div id="page-settings" style="display:none;">
   <h2 style="margin-bottom:12px;">📧 Email értesítés</h2>
   
-  <!-- Admin jelszó mező (ha nincs beállítva, nem kell) -->
+  <div style="font-size:0.82rem; color:#aaa; background:#12121a; border:1px solid #2a2a3e; border-radius:6px; padding:10px; margin-bottom:12px;">
+    <strong>Kötelező mezők:</strong> SMTP szerver, Port, Felhasználó, Jelszó, Feladó email, Címzett(ek).<br>
+    Először add meg az <strong>admin jelszót</strong> lent → 🔓 Feloldás → utána módosíthatod a beállításokat.
+  </div>
+  
+  <!-- Admin jelszó mező -->
   <div id="admin-section" class="card" style="margin-bottom:12px;">
     <div class="form-group"><label>Admin jelszó (a beállítások módosításához)</label>
       <div style="display:flex; gap:8px;">
@@ -372,8 +377,12 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
-  const filters = document.getElementById('product_filters').value.split(',').map(s => s.trim()).filter(Boolean);
   const pw = getAdminPass();
+  if (!pw && document.getElementById('admin_pass') && document.getElementById('admin_pass').offsetParent !== null) {
+    setStatus('settings-status', '❌ Először add meg az admin jelszót és kattints a 🔓 Feloldás-ra', true);
+    return;
+  }
+  const filters = document.getElementById('product_filters').value.split(',').map(s => s.trim()).filter(Boolean);
   const data = {
     smtp_host: document.getElementById('smtp_host').value,
     smtp_port: parseInt(document.getElementById('smtp_port').value) || 587,
@@ -390,7 +399,14 @@ async function saveSettings() {
   try {
     const res = await fetch('/api/settings', {method:'POST', body:JSON.stringify(data), headers:{'Content-Type':'application/json'}});
     const r = await res.json();
-    setStatus('settings-status', r.status === 'ok' ? '✅ Mentve' : '❌ ' + (r.error || 'Hiba'));
+    if (r.status === 'ok') {
+      setStatus('settings-status', '✅ Mentve');
+      loadSettings(); // frissíti az összefoglalót
+    } else if (res.status === 401) {
+      setStatus('settings-status', '❌ ' + (r.error || 'Unauthorized — add meg az admin jelszót a 🔓 Feloldás gombbal'), true);
+    } else {
+      setStatus('settings-status', '❌ ' + (r.error || 'Ismeretlen hiba'), true);
+    }
   } catch(e) {
     setStatus('settings-status', '❌ Hálózati hiba', true);
   }
@@ -511,7 +527,7 @@ def api_health():
 def api_settings():
     if request.method == "POST":
         if ADMIN_PASSWORD and not require_auth_post():
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Unauthorized — add meg a helyes admin jelszót a kérésben (admin_password mező vagy X-Admin-Key header)"}), 401
         data = request.get_json(silent=True) or {}
         filters = data.get("product_filters", [])
         if isinstance(filters, str):
