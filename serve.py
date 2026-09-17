@@ -413,16 +413,16 @@ async function saveSettings() {
 }
 
 async function testEmail() {
-  setStatus('settings-status', '⏳ Email küldése...');
+  setStatus('settings-status', '⏳ Teszt email küldése...');
   await saveSettings();
   const pw = getAdminPass();
   try {
-    const res = await fetch('/api/send-digest', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({admin_password: pw})});
+    const res = await fetch('/api/test-email', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({admin_password: pw})});
     const r = await res.json();
-    if (r.sent > 0) setStatus('settings-status', `✅ ${r.sent} email elküldve`);
-    else setStatus('settings-status', '⚠️ ' + (r.message || r.error || 'Ismeretlen hiba'));
+    if (r.sent > 0) setStatus('settings-status', `✅ ${r.message}`);
+    else setStatus('settings-status', '⚠️ ' + (r.error || r.message || 'Ismeretlen'), true);
   } catch(e) {
-    setStatus('settings-status', '❌ Hálózati hiba', true);
+    setStatus('settings-status', '❌ Hálózati hiba: ' + e.message, true);
   }
 }
 
@@ -629,6 +629,40 @@ def api_send_digest():
         return jsonify({"message": f"✅ {len(items)} email elküldve {len(recipients)} címre", "sent": len(items)})
     except Exception as e:
         return jsonify({"error": str(e), "sent": 0}), 500
+
+
+@app.route("/api/test-email", methods=["POST"])
+def api_test_email():
+    """Teszt email — SMTP kapcsolat ellenőrzése"""
+    if ADMIN_PASSWORD and not require_auth_post():
+        return jsonify({"error": "Unauthorized — add meg az admin jelszót"}), 401
+    config = db.get_email_config()
+    if not config or not config.get("smtp_host"):
+        return jsonify({"error": "Nincs SMTP konfigurálva"}), 400
+    import smtplib, email.message
+    msg = email.message.EmailMessage()
+    msg["Subject"] = "🧪 Teszt — Élelmiszer-jogfigyelő"
+    msg["From"] = config.get("from_email", config.get("smtp_user", ""))
+    msg["To"] = config.get("to_email", "")
+    if config.get("cc_email"):
+        msg["Cc"] = config["cc_email"]
+    msg.set_content("Ez egy teszt email. SMTP OK ✅\n\n— Élelmiszer-jogfigyelő")
+    try:
+        recipients = [e.strip() for e in config["to_email"].split(",") if e.strip()]
+        if config.get("cc_email"):
+            recipients += [e.strip() for e in config["cc_email"].split(",") if e.strip()]
+        with smtplib.SMTP(config["smtp_host"], config["smtp_port"]) as server:
+            server.starttls()
+            server.login(config["smtp_user"], config.get("smtp_pass", ""))
+            server.send_message(msg, from_addr=config["from_email"], to_addrs=recipients)
+        return jsonify({"message": f"✅ Teszt email elküldve {len(recipients)} címre", "sent": 1})
+    except smtplib.SMTPAuthenticationError:
+        return jsonify({"error": "SMTP hitelesítés sikertelen — ellenőrizd a felhasználónevet és jelszót"}), 500
+    except smtplib.SMTPException as e:
+        return jsonify({"error": f"SMTP hiba: {e}"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/daily")
 def api_daily():
