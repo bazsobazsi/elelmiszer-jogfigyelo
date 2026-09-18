@@ -135,16 +135,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div id="admin-status" class="form-status"></div>
   </div>
 
-  <!-- Email config összefoglaló (read-only, env-ből) -->
-  <div id="email-summary" class="card" style="margin-bottom:12px;display:none">
-    <h3 style="font-size:0.95rem;margin-bottom:8px">📧 Email értesítés</h3>
-    <div style="font-size:0.85rem;color:#aaa">
-      <div id="email-recipients" style="margin-bottom:2px"></div>
-      <div id="email-cc" style="margin-bottom:2px"></div>
-      <div id="email-schedule" style="margin-bottom:2px"></div>
-      <div id="email-status" style="color:#7f7;margin-top:4px"></div>
-    </div>
+  <!-- Feliratkozók kezelése -->
+<div id="subscriber-section" class="card" style="margin-bottom:12px;display:none">
+  <h3 style="font-size:0.95rem;margin-bottom:8px">📧 Feliratkozott email címek</h3>
+  <div style="display:flex;gap:6px;margin-bottom:8px">
+    <input id="sub-email" type="email" style="flex:1;background:#1a1a2e;border:1px solid #2a2a3e;color:#e0e0e0;padding:8px;border-radius:6px;font-size:0.85rem" placeholder="email@pelda.hu">
+    <button class="btn-primary" onclick="addSubscriber()">➕ Hozzáad</button>
   </div>
+  <div id="subscriber-list" style="color:#666;font-size:0.82rem"></div>
+  <div id="sub-status" class="form-status"></div>
+</div>
 
   <!-- Crawler vezérlés -->
   <div class="card" style="margin-bottom:12px">
@@ -241,36 +241,61 @@ function showTab(name) {
   document.getElementById('page-settings').style.display = name === 'settings' ? '' : 'none';
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + (name === 'dashboard' ? 'dash' : 'set')).classList.add('active');
-  if (name === 'settings') { loadEmailSummary(); loadSendLog(); }
+  if (name === 'settings') { loadSubscribers(); loadSendLog(); }
 }
 
 function unlockSettings() {
   const pw = document.getElementById('admin_pass').value;
   if (!pw) { document.getElementById('admin-status').textContent = 'Add meg az admin jelszót'; return; }
-  fetch('/api/email-summary', {headers:{'Authorization':'Bearer '+pw}})
-    .then(r => { if(r.ok) { settingsUnlocked = true; document.getElementById('admin-status').textContent = '✅ Feloldva'; loadSendLog(); loadEmailSummary(); }
+  fetch('/api/subscribers', {headers:{'Authorization':'Bearer '+pw}})
+    .then(r => { if(r.ok) { settingsUnlocked = true; document.getElementById('admin-status').textContent = '✅ Feloldva'; loadSubscribers(); loadSendLog(); }
       else { document.getElementById('admin-status').textContent = '❌ Rossz jelszó'; } })
     .catch(e => { document.getElementById('admin-status').textContent = '❌ Hiba: '+e.message; });
 }
 
 function getAdminPass() { return document.getElementById('admin_pass') ? document.getElementById('admin_pass').value : ''; }
 
-async function loadEmailSummary() {
+async function loadSubscribers() {
+  const pw = getAdminPass();
+  if (!pw) { document.getElementById('subscriber-section').style.display='none'; return; }
+  try {
+    const res = await fetch('/api/subscribers', {headers:{'Authorization':'Bearer '+pw}});
+    if (!res.ok) { document.getElementById('subscriber-section').style.display='none'; return; }
+    const data = await res.json();
+    document.getElementById('subscriber-section').style.display='';
+    if (!data.length) { document.getElementById('subscriber-list').innerHTML = '<div style="color:#666;padding:8px">📭 Még nincs feliratkozó</div>'; return; }
+    let html = '';
+    for (const s of data) {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #1a1a2e">`;
+      html += `<span style="color:#ccc">📧 ${esc(s.email)}${s.name ? ' ('+esc(s.name)+')' : ''} <span style="color:#666;font-size:0.78rem">(${s.subscribed_at})</span></span>`;
+      html += `<button class="btn-secondary" style="padding:2px 8px;font-size:0.78rem" onclick="removeSubscriber('${esc(s.email)}')">✕</button>`;
+      html += `</div>`;
+    }
+    document.getElementById('subscriber-list').innerHTML = html;
+  } catch(e) { document.getElementById('subscriber-section').style.display='none'; }
+}
+
+async function addSubscriber() {
+  const email = document.getElementById('sub-email').value.trim();
+  if (!email) { document.getElementById('sub-status').textContent = 'Add meg az email címet'; return; }
   const pw = getAdminPass();
   try {
-    const res = await fetch('/api/email-summary', {headers:{Authorization:'Bearer '+pw}});
-    if (!res.ok) { document.getElementById('email-summary').style.display='none'; return; }
-    const d = await res.json();
-    if (d.smtp_host) {
-      document.getElementById('email-summary').style.display='';
-      document.getElementById('email-recipients').textContent = '📨 Címzettek: ' + (d.to_email || 'nincs');
-      document.getElementById('email-cc').textContent = '📨 CC: ' + (d.cc_email || '(nincs)');
-      document.getElementById('email-schedule').textContent = '⏰ Küldés: ' + (d.send_time || '08:00') + '-kor · Feladó: ' + (d.from_email || d.smtp_user || '?');
-      document.getElementById('email-status').textContent = d.enabled ? '✅ Bekapcsolva' : '⏸️ Kikapcsolva';
-    } else {
-      document.getElementById('email-summary').style.display='none';
-    }
-  } catch(e) { document.getElementById('email-summary').style.display='none'; }
+    const res = await fetch('/api/subscribers', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email, admin_password:pw})});
+    const r = await res.json();
+    if (r.status === 'ok') { document.getElementById('sub-email').value = ''; document.getElementById('sub-status').textContent = '✅ ' + (r.message || 'Felvéve'); loadSubscribers(); }
+    else { document.getElementById('sub-status').textContent = '❌ ' + (r.error || 'Hiba'); }
+  } catch(e) { document.getElementById('sub-status').textContent = '❌ Hálózati hiba'; }
+}
+
+async function removeSubscriber(email) {
+  if (!confirm('Törlöd: ' + email + '?')) return;
+  const pw = getAdminPass();
+  try {
+    const res = await fetch('/api/subscribers', {method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email, admin_password:pw})});
+    const r = await res.json();
+    document.getElementById('sub-status').textContent = r.status === 'ok' ? '✅ Törölve' : '❌ ' + (r.error || 'Hiba');
+    loadSubscribers();
+  } catch(e) { document.getElementById('sub-status').textContent = '❌ Hálózati hiba'; }
 }
 
 async function loadSendLog() {
@@ -361,21 +386,37 @@ def api_filters():
 def api_health():
     return jsonify({"status": "ok"})
 
-# ── Email config (read-only, env-ből) ──
+# ── Feliratkozók ──
 
-@app.route("/api/email-summary")
-def api_email_summary():
-    """SMTP beállítások olvasása környezeti változókból"""
-    return jsonify({
-        "smtp_host": os.environ.get("SMTP_HOST", ""),
-        "smtp_port": int(os.environ.get("SMTP_PORT", 587)),
-        "smtp_user": os.environ.get("SMTP_USER", ""),
-        "from_email": os.environ.get("EMAIL_FROM", ""),
-        "to_email": os.environ.get("EMAIL_TO", ""),
-        "cc_email": os.environ.get("EMAIL_CC", ""),
-        "send_time": os.environ.get("EMAIL_SEND_TIME", "08:00"),
-        "enabled": os.environ.get("EMAIL_ENABLED", "0") == "1",
-    })
+@app.route("/api/subscribers", methods=["GET"])
+def api_get_subscribers():
+    if ADMIN_PASSWORD and not require_auth():
+        return jsonify({"error": "Unauthorized"}), 401
+    return jsonify(db.get_subscribers())
+
+@app.route("/api/subscribers", methods=["POST"])
+def api_add_subscriber():
+    if ADMIN_PASSWORD and not require_auth_post():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+    if not email or "@" not in email:
+        return jsonify({"error": "Érvénytelen email"}), 400
+    ok, result = db.add_subscriber(email, data.get("name", ""))
+    if ok:
+        return jsonify({"status": "ok", "message": "Feliratkozva", "id": result})
+    return jsonify({"error": "Már létezik" if result is None else str(result)}), 400
+
+@app.route("/api/subscribers", methods=["DELETE"])
+def api_remove_subscriber():
+    if ADMIN_PASSWORD and not require_auth_post():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+    if not email:
+        return jsonify({"error": "Email kötelező"}), 400
+    db.remove_subscriber(email)
+    return jsonify({"status": "ok"})
 
 # ── Send log ──
 
@@ -423,20 +464,22 @@ def api_digest_and_send():
     smtp_user = os.environ.get("SMTP_USER", "")
     smtp_pass = os.environ.get("SMTP_PASS", "")
     from_email = os.environ.get("EMAIL_FROM", "")
-    to_email = os.environ.get("EMAIL_TO", "")
-    cc_email = os.environ.get("EMAIL_CC", "")
 
-    if not smtp_host or not to_email:
-        return jsonify({"error": "SMTP nincs konfigurálva (SMTP_HOST, EMAIL_TO)", "sent": 0}), 400
+    if not smtp_host or not from_email:
+        return jsonify({"error": "SMTP nincs konfigurálva (SMTP_HOST, EMAIL_FROM)", "sent": 0}), 400
+
+    subs = db.get_subscribers()
+    if not subs:
+        return jsonify({"message": "Nincs feliratkozó", "sent": 0})
 
     items = db.get_unnotified_items()
     if not items:
         return jsonify({"message": "Nincs új releváns elem", "sent": 0})
 
     import smtplib, email.message
-    recipients = [e.strip() for e in to_email.split(",") if e.strip()]
-    if cc_email:
-        recipients += [e.strip() for e in cc_email.split(",") if e.strip()]
+
+    recipients = [s["email"] for s in subs]
+    to_header = ", ".join(recipients)
 
     body = "Élelmiszer-jogfigyelő — AI compliance összefoglaló\n" + "="*50 + "\n\n"
     for it in items:
@@ -451,8 +494,7 @@ def api_digest_and_send():
     msg = email.message.EmailMessage()
     msg["Subject"] = f"📋 Élelmiszer-jogfigyelő — {len(items)} új releváns változás"
     msg["From"] = from_email
-    msg["To"] = to_email
-    if cc_email: msg["Cc"] = cc_email
+    msg["To"] = to_header
     msg.set_content(body)
 
     try:

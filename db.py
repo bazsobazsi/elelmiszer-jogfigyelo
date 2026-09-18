@@ -86,6 +86,14 @@ CREATE TABLE IF NOT EXISTS send_log (
     status TEXT DEFAULT 'ok',
     error TEXT DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS subscribers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    name TEXT DEFAULT '',
+    subscribed_at TEXT DEFAULT (datetime('now')),
+    active INTEGER DEFAULT 1
+);
 """
 
 
@@ -295,6 +303,43 @@ def mark_notified_raw(item_ids):
         conn.execute("INSERT OR IGNORE INTO notifications (profile_id, item_id) VALUES (1, ?)", (iid,))
     conn.commit()
     conn.close()
+
+
+def get_subscribers():
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, email, name, subscribed_at, active FROM subscribers WHERE active = 1 ORDER BY subscribed_at"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_subscriber(email, name=""):
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO subscribers (email, name) VALUES (?, ?)",
+            (email.strip().lower(), name.strip()),
+        )
+        conn.commit()
+        row = conn.execute("SELECT id FROM subscribers WHERE email = ?", (email.strip().lower(),)).fetchone()
+        return (True, row["id"]) if row else (False, None)
+    except Exception as e:
+        return (False, str(e))
+    finally:
+        conn.close()
+
+
+def remove_subscriber(email):
+    conn = get_db()
+    conn.execute(
+        "UPDATE subscribers SET active = 0 WHERE email = ?",
+        (email.strip().lower(),),
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_daily_digest(date_str=None):
     """Releváns, még nem küldött item-ek egy adott napra"""
     if not date_str:

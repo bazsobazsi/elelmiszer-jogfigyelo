@@ -51,18 +51,19 @@ def get_compliance_impact_prompt(item, profile):
     Compliance hatásvizsgálat prompt.
     Nem csak osztályoz, hanem konkrét következményeket azonosít.
     """
+    p = dict(profile) if profile else {}
     return f"""Te egy élelmiszeripari compliance ügynök vagy. A feladatod, hogy egy
 változás/riasztás/új szabályozás hatását elemezd az alábbi ügyfél profiljára.
 
-Ügyfél: {profile.get('name', 'Ismeretlen')}
-Termékcsoportok: {json.loads(profile.get('product_groups', '[]')) if isinstance(profile.get('product_groups'), str) else profile.get('product_groups', [])}
-Tanúsítványok: {json.loads(profile.get('standards', '[]')) if isinstance(profile.get('standards'), str) else profile.get('standards', [])}
-Exportcélok: {json.loads(profile.get('export_targets', '[]')) if isinstance(profile.get('export_targets'), str) else profile.get('export_targets', [])}
+Ügyfél: {p.get('name', 'Ismeretlen')}
+Termékcsoportok: {json.loads(p.get('product_groups', '[]')) if isinstance(p.get('product_groups'), str) else p.get('product_groups', [])}
+Tanúsítványok: {json.loads(p.get('standards', '[]')) if isinstance(p.get('standards'), str) else p.get('standards', [])}
+Exportcélok: {json.loads(p.get('export_targets', '[]')) if isinstance(p.get('export_targets'), str) else p.get('export_targets', [])}
 
 Bejövő változás:
 Forrás: {item['source']}
 Cím: {item['title']}
-Tartalom: {item.get('raw_json', '')[:1500]}
+Tartalom: {(item['raw_json'] or '')[:1500]}
 
 Elemezd:
 1. Compliance relevancia (0/1)
