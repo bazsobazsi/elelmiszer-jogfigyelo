@@ -187,7 +187,9 @@ function renderItems(items) {
     const cat = it.category || 'egyéb';
     const src = it.source || '?';
     const rel = it.relevant ? '<span class="tag green">Releváns</span>' : '';
-    const catTag = `<span class="tag ${['jogszabaly','blue']['modositas','yellow'].includes(cat)?'yellow':''}">${cat}</span>`;
+    const catMap = {'jogszabaly': 'blue', 'jogszabaly_modositas': 'yellow', 'GMP_utmutato': 'purple', 'ertesito': 'green', 'iranyelv': 'blue'};
+    const catCls = catMap[cat] || '';
+    const catTag = `<span class="tag${catCls?' '+catCls:''}">${cat}</span>`;
     html += '<div class="card">';
     html += `<div class="source">${src}</div>`;
     html += `<div class="title">${esc(it.title)}</div>`;
