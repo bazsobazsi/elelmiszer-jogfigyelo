@@ -305,6 +305,120 @@ def mark_notified_raw(item_ids):
     conn.close()
 
 
+def simple_classify_item(item_id, title, source, raw_json=""):
+    """
+    Egyszerű szabályalapú klasszifikáció — nem kell LLM hozzá.
+    Keywords matching a profil termékcsoportjai és szabványai alapján.
+    """
+    conn = get_db()
+    try:
+        text = (title + " " + (raw_json or "")).lower()
+        source = (source or "").lower()
+        
+        # Forrás alapú kategória
+        cat_map = {
+            "nebih": "jogszabaly",
+            "kozlony": "jogszabaly_modositas",
+            "nak_ghp": "GMP_utmutato",
+            "eurlex": "jogszabaly",
+            "rasff": "riasztas",
+            "eu_guidance": "iranymutatas",
+        }
+        category = "egyeb"
+        for key, val in cat_map.items():
+            if key in source:
+                category = val
+                break
+        
+        # Relevancia: profil termékcsoportok alapján
+        profiles = conn.execute("SELECT id, product_groups, standards FROM profiles WHERE active = 1").fetchall()
+        relevant = 0
+        product_groups = []
+        affected_standards = []
+        action = ""
+        
+        product_keywords = {
+            "húskészítmény": ["hús", "húskészítmény", "baromfi", "sertés", "marha", "nyúl", "vad", "húsfeldolgozás", "hentes"],
+            "tejtermék": ["tej", "tejtermék", "sajt", "joghurt", "vaj", "tejipar", "laktóz"],
+            "pékáru": ["pékáru", "kenyér", "pék", "sütőipar", "liszt", "gabona", "búza", "glutén"],
+        }
+        
+        for p in profiles:
+            groups = json.loads(p.get("product_groups", "[]")) if isinstance(p.get("product_groups"), str) else p.get("product_groups", [])
+            for g in groups:
+                kws = product_keywords.get(g, [g])
+                for kw in kws:
+                    if kw in text:
+                        relevant = 1
+                        if g not in product_groups:
+                            product_groups.append(g)
+                        break
+        
+        # Szabvány érintettség
+        std_keywords = {
+            "HACCP": ["haccp", "ccp", "önellenőrzés", "higiénia", "mikrobiológia"],
+            "BRCGS": ["brc", "brcgs", "audit", "tanúsítvány"],
+            "ISO 22000": ["iso 22000", "élelmiszerbiztonság", "fsms"],
+            "FSSC 22000": ["fssc", "fssc 22000"],
+            "IFS Food": ["ifs", "ifs food"],
+        }
+        for std, kws in std_keywords.items():
+            for kw in kws:
+                if kw in text:
+                    affected_standards.append(std)
+                    break
+        
+        # Teendő kategória szerint
+        if category == "riasztás":
+            action = "Ellenőrizni az érintett terméktételt, visszahívási terv aktiválása."
+        elif category == "jogszabály_módosítás":
+            action = "Jogszabályváltozás beépítése a HACCP dokumentációba."
+        elif category == "GMP_útmutató":
+            action = "GMP útmutató alapján felülvizsgálni a gyártási eljárásokat."
+        elif category == "export":
+            action = "Exportpiaci követelmények ellenőrzése, dokumentáció frissítése."
+        
+        # Impact summary
+        impact_parts = []
+        if product_groups:
+            impact_parts.append(f"Érintett termékcsoport: {', '.join(product_groups)}")
+        if affected_standards:
+            impact_parts.append(f"Érintett szabvány: {', '.join(affected_standards)}")
+        impact_summary = " — ".join(impact_parts) if impact_parts else ""
+        
+        conn.execute(
+            """INSERT OR REPLACE INTO analyses (item_id, relevant, category, product_groups, standards_affected, impact_summary, action_required)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (item_id, relevant, category,
+             json.dumps(product_groups, ensure_ascii=False),
+             json.dumps(affected_standards, ensure_ascii=False),
+             impact_summary, action),
+        )
+        conn.commit()
+        return (relevant, category, product_groups)
+    except Exception as e:
+        print(f"⚠️  Classify error item {item_id}: {e}")
+        return (0, "error", [])
+    finally:
+        conn.close()
+
+
+def classify_all():
+    """Minden elemzetlen item klasszifikációja"""
+    conn = get_db()
+    items = conn.execute(
+        "SELECT i.id, i.source, i.title, i.raw_json FROM items i LEFT JOIN analyses a ON i.id = a.item_id WHERE a.id IS NULL"
+    ).fetchall()
+    conn.close()
+    if not items:
+        return 0
+    count = 0
+    for it in items:
+        simple_classify_item(it["id"], it["title"], it["source"], it.get("raw_json", ""))
+        count += 1
+    return count
+
+
 def get_subscribers():
     conn = get_db()
     rows = conn.execute(

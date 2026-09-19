@@ -474,6 +474,11 @@ def api_digest_and_send():
     if not subs:
         return jsonify({"message": "Nincs feliratkozó", "sent": 0})
 
+    # Automatikus klasszifikáció a küldés előtt
+    classified = db.classify_all()
+    if classified:
+        log.info(f"✅ {classified} item klasszifikálva a digest előtt")
+
     items = db.get_unnotified_items()
     if not items:
         return jsonify({"message": "Nincs új releváns elem", "sent": 0})
@@ -548,6 +553,10 @@ def api_crawl():
             results[name] = {"error": str(e)}
     try:
         db.init_db()
+        # Automatikus klasszifikáció a crawler után
+        classified = db.classify_all()
+        if classified:
+            log.info(f"✅ {classified} item klasszifikálva")
     except Exception as e:
         log.error(f"DB init after crawl: {e}")
     return jsonify(results)
